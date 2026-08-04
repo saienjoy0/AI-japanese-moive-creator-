@@ -179,17 +179,17 @@ class SeedancePlatformAdapter:
             image_to_video=True,
             reference_to_video=True,
             first_last_frame=True,
-            video_continuation=True,
+            video_continuation=False,
             native_audio=True,
-            driving_audio=True,
-            reference_voice=True,
-            multi_shot=True,
-            video_editing=True,
+            driving_audio=False,
+            reference_voice=False,
+            multi_shot=False,
+            video_editing=False,
             min_duration_seconds=4,
             max_duration_seconds=15,
             max_reference_images=9,
             max_reference_videos=3,
-            max_reference_audios=3,
+            max_reference_audios=0,
             supported_aspect_ratios=["9:16"],
             supported_resolutions=["720P", "1080P"],
         )
@@ -231,6 +231,78 @@ class SeedancePlatformAdapter:
         raise ProviderCoreError(
             "seedance/platform results must be imported by an operator; automatic download is disabled"
         )
+
+
+class Wan27ImagePlanningAdapter:
+    """Wan image planning route that keeps execution on the proven PR8 executor."""
+
+    ROUTE_ID = "wan/image"
+
+    def __init__(self, config: LiveProviderConfig) -> None:
+        self.config = config
+
+    def descriptor(self) -> ProviderDescriptor:
+        return ProviderDescriptor(
+            route_id=self.ROUTE_ID,
+            provider="dashscope",
+            model=self.config.dashscope.image_model,
+            origin_vendor="alibaba",
+            execution_mode="automatic",
+        )
+
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            route_id=self.ROUTE_ID,
+            execution_mode="automatic",
+            modalities=["image"],
+            min_duration_seconds=1,
+            max_duration_seconds=60,
+            max_reference_images=0,
+            max_reference_videos=0,
+            max_reference_audios=0,
+            supported_aspect_ratios=["9:16"],
+            supported_resolutions=["720P"],
+        )
+
+    def validate(self, request: ShotGenerationSpec) -> ValidationReport:
+        errors = _validate_against_capabilities(request, self.capabilities())
+        return ValidationReport.failure(*errors) if errors else ValidationReport.success()
+
+    def estimate_cost(self, request: ShotGenerationSpec) -> CostEstimate:
+        return CostEstimate(
+            native_cost=Money(
+                amount=self.config.dashscope.estimate_image_cost_cny(),
+                currency="CNY",
+            ),
+            confidence="estimated",
+            price_snapshot_id=f"dashscope-{self.config.dashscope.price_snapshot_date}",
+        )
+
+    def prepare(self, request: ShotGenerationSpec) -> PreparedProviderRequest:
+        return _prepared_request(
+            self.ROUTE_ID,
+            request,
+            extra={
+                "model": self.config.dashscope.image_model,
+                "size": self.config.dashscope.image_size,
+                "thinking_mode": self.config.dashscope.image_thinking_mode,
+            },
+        )
+
+    def submit(self, request: PreparedProviderRequest) -> ProviderSubmission:
+        raise ProviderCoreError(
+            "wan/image execution remains delegated to Wan27LiveTaskExecutor"
+        )
+
+    def poll(self, submission: ProviderSubmission) -> ProviderPollResult:
+        raise ProviderCoreError("wan/image polling remains delegated to the PR8 executor")
+
+    def download(
+        self,
+        result: ProviderPollResult,
+        output_dir: str | Path,
+    ) -> ProviderArtifactSet:
+        raise ProviderCoreError("wan/image download remains delegated to the PR8 executor")
 
 
 class Wan27PlanningAdapter:
@@ -337,6 +409,7 @@ def build_default_provider_registry(config: LiveProviderConfig) -> ProviderRegis
     registry = ProviderRegistry()
     registry.register(MockProviderAdapter())
     registry.register(SeedancePlatformAdapter())
+    registry.register(Wan27ImagePlanningAdapter(config))
     registry.register(Wan27PlanningAdapter(config))
     return registry
 
