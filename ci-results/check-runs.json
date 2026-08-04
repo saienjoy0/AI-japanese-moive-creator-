@@ -1,75 +1,10 @@
 [
   {
-    "id": 91893956504,
-    "name": "Offline Japanese MP4 smoke render",
-    "status": "in_progress",
-    "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878244136/job/91893956504",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 0
-    }
-  },
-  {
-    "id": 91893956466,
-    "name": "Docker Compose config",
-    "status": "completed",
-    "conclusion": "success",
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878244136/job/91893956466",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 1
-    }
-  },
-  {
-    "id": 91893956443,
-    "name": "Backend dependency and compile",
-    "status": "in_progress",
-    "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878244136/job/91893956443",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 0
-    }
-  },
-  {
-    "id": 91893956430,
-    "name": "Frontend typecheck, tests, and build",
-    "status": "in_progress",
-    "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878244136/job/91893956430",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 0
-    }
-  },
-  {
-    "id": 91893956398,
-    "name": "Model catalog",
-    "status": "completed",
-    "conclusion": "success",
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878244136/job/91893956398",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 1
-    }
-  },
-  {
-    "id": 91893956107,
+    "id": 91894027161,
     "name": "probe",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878244121/job/91893956107",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878268792/job/91894027161",
     "output": {
       "title": null,
       "summary": null,
