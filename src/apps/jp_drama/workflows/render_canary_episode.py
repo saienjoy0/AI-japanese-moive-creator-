@@ -283,6 +283,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.approved_keyframe
             else keyframe_path
         )
+        if not candidate.is_file() or candidate.stat().st_size == 0:
+            print(
+                f"approval error: keyframe does not exist or is empty: {candidate}",
+                file=sys.stderr,
+            )
+            return EXIT_APPROVAL
         operation_id = _keyframe_operation_id(prepared, args.shot_id)
         record = ledger.operations.get(operation_id)
         if record is None or record.status != "succeeded":
