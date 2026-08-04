@@ -51,12 +51,18 @@
       {
         "character_id": "char_mio",
         "display_name": "水野美緒",
-        "dramatic_role": "正体を隠した新店長"
+        "dramatic_role": "正体を隠した新店長",
+        "occupation": "エリアマネージャー",
+        "speech_style": "静かで端的",
+        "visual_notes": "30代女性、濡れた紺色コート、落ち着いた表情を全カットで維持"
       },
       {
         "character_id": "char_ota",
         "display_name": "太田健",
-        "dramatic_role": "客を見下す店員"
+        "dramatic_role": "客を見下す店員",
+        "occupation": "コンビニ店員",
+        "speech_style": "早口で高圧的",
+        "visual_notes": "20代男性、青い制服と名札、短髪、表情変化を全カットで維持"
       }
     ],
     "beat_mappings": [
@@ -96,7 +102,10 @@
         "特徴的な決め台詞"
       ],
       "approved": true
-    }
+    },
+    "restrictions": [
+      "実在企業のロゴを表示しない"
+    ]
   },
   "episode": {
     "episode_id": "episode_example_001",
@@ -118,7 +127,12 @@
       {
         "location_id": "loc_store",
         "name": "郊外型コンビニ",
-        "description": "雨の夜、白い蛍光灯の店内"
+        "description": "雨の夜、白い蛍光灯の店内",
+        "time_of_day": "night",
+        "continuity_rules": [
+          "入口の床は濡れている",
+          "レジ背面の商品棚配置を固定する"
+        ]
       }
     ]
   },
@@ -138,7 +152,7 @@
           "char_ota"
         ],
         "action": "太田が美緒の入店を止める。",
-        "visual_description": "入口で対立する二人を縦型の中景で捉える。",
+        "visual_description": "入口で対立する二人を縦型の中景で捉え、雨に濡れた美緒のコートを見せる。",
         "dialogue": [
           {
             "cue_id": "cue_01",
@@ -148,6 +162,13 @@
             "end_seconds": 6
           }
         ],
+        "audio": {
+          "ambience": "雨音と店内冷蔵庫の低い作動音",
+          "sound_effects": [
+            "自動ドアの警告音"
+          ],
+          "bgm_cue": "低い緊張音を弱く開始"
+        },
         "render_strategy": "video_plus_tts"
       },
       {
@@ -161,7 +182,7 @@
           "char_ota"
         ],
         "action": "美緒が本部の辞令を見せる。",
-        "visual_description": "辞令から太田の表情へ視線を誘導する。",
+        "visual_description": "美緒が差し出す辞令の手元から太田の動揺した表情へ視線を誘導する。",
         "dialogue": [
           {
             "cue_id": "cue_02",
@@ -171,6 +192,14 @@
             "end_seconds": 9
           }
         ],
+        "audio": {
+          "ambience": "雨音と店内冷蔵庫の低い作動音",
+          "sound_effects": [
+            "紙を開く音"
+          ],
+          "bgm_cue": "正体開示で緊張音を一度止める",
+          "generated_native_audio": true
+        },
         "render_strategy": "native_av"
       },
       {
@@ -184,7 +213,7 @@
           "char_ota"
         ],
         "action": "美緒が店内を見回し、太田が青ざめる。",
-        "visual_description": "太田の表情へゆっくり寄る。",
+        "visual_description": "店内を見回す美緒から太田の青ざめた表情へゆっくり寄り、監査開始の緊張を作る。",
         "dialogue": [
           {
             "cue_id": "cue_03",
@@ -194,6 +223,11 @@
             "end_seconds": 7
           }
         ],
+        "audio": {
+          "ambience": "雨音と店内冷蔵庫の低い作動音",
+          "sound_effects": [],
+          "bgm_cue": "次話へ続く短い低音で締める"
+        },
         "render_strategy": "video_plus_tts"
       }
     ]
