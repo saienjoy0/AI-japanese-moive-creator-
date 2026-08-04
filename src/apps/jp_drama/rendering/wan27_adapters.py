@@ -1,14 +1,15 @@
 """Wan 2.7 compatibility adapters built on the imported LumenX providers.
 
-LumenX's generic adapters predate the Wan 2.7 request contracts. These thin
-subclasses retain LumenX media resolution, authentication, downloads, and
-public interfaces while correcting only the Wan 2.7 HTTP payloads.
+The adapters preserve the imported public interfaces while correcting Wan 2.7
+payloads, using the exact target model for temporary uploads, and exposing
+restart-safe async task hooks to the canary ledger.
 """
 
 from __future__ import annotations
 
+import os
 import time
-from typing import Mapping, Optional
+from typing import Callable, Dict, Mapping, Optional
 
 import requests
 
@@ -20,9 +21,45 @@ from src.utils.endpoints import get_provider_base_url
 
 logger = get_logger(__name__)
 
+TaskSubmittedCallback = Callable[[str, str | None], None]
 
-class Wan27ImageModel(WanxImageModel):
+
+class _AsyncTaskHooks:
+    def _init_task_hooks(self) -> None:
+        self._resume_task_id: str | None = None
+        self._task_submitted_callback: TaskSubmittedCallback | None = None
+
+    def configure_operation(
+        self,
+        *,
+        resume_task_id: str | None = None,
+        on_task_submitted: TaskSubmittedCallback | None = None,
+    ) -> None:
+        self._resume_task_id = resume_task_id
+        self._task_submitted_callback = on_task_submitted
+
+    def clear_operation(self) -> None:
+        self._resume_task_id = None
+        self._task_submitted_callback = None
+
+    def _notify_task_submitted(self, task_id: str, response: requests.Response) -> None:
+        if self._task_submitted_callback is None:
+            return
+        payload = response.json() if response.text else {}
+        request_id = (
+            payload.get("request_id")
+            or payload.get("output", {}).get("request_id")
+            or getattr(response, "headers", {}).get("X-DashScope-Request-Id")
+        )
+        self._task_submitted_callback(task_id, request_id)
+
+
+class Wan27ImageModel(_AsyncTaskHooks, WanxImageModel):
     """Send Wan 2.7 image requests without unsupported legacy parameters."""
+
+    def __init__(self, config):
+        super().__init__(config)
+        self._init_task_hooks()
 
     def _generate_dashscope_image_http(
         self,
@@ -49,9 +86,6 @@ class Wan27ImageModel(WanxImageModel):
                 watermark=watermark,
             )
 
-        # Wan 2.7 does not accept negative_prompt or prompt_extend. Exclusions
-        # must be expressed in the positive prompt and thinking_mode is the
-        # supported prompt-reasoning control.
         _ = negative_prompt, prompt_extend
         base = get_provider_base_url("DASHSCOPE")
         create_url = f"{base}/api/v1/services/aigc/image-generation/generation"
@@ -82,16 +116,22 @@ class Wan27ImageModel(WanxImageModel):
             "input": {"messages": [{"role": "user", "content": content}]},
             "parameters": parameters,
         }
-        logger.info("Calling %s with Wan 2.7 image payload", model_name)
-        response = requests.post(create_url, headers=headers, json=payload, timeout=120)
-        if response.status_code != 200:
-            data = response.json() if response.text else {}
-            raise RuntimeError(
-                f"{model_name} task creation failed: {data.get('message', response.text)}"
-            )
-        task_id = response.json().get("output", {}).get("task_id")
-        if not task_id:
-            raise RuntimeError(f"No task_id in response: {response.json()}")
+
+        task_id = self._resume_task_id
+        if task_id:
+            logger.info("Resuming existing %s image task %s", model_name, task_id)
+        else:
+            logger.info("Calling %s with Wan 2.7 image payload", model_name)
+            response = requests.post(create_url, headers=headers, json=payload, timeout=120)
+            if response.status_code != 200:
+                data = response.json() if response.text else {}
+                raise RuntimeError(
+                    f"{model_name} task creation failed: {data.get('message', response.text)}"
+                )
+            task_id = response.json().get("output", {}).get("task_id")
+            if not task_id:
+                raise RuntimeError(f"No task_id in response: {response.json()}")
+            self._notify_task_submitted(task_id, response)
         return self._poll_image_task(base, task_id, model_name)
 
     def _poll_image_task(self, base: str, task_id: str, model_name: str) -> str:
@@ -124,8 +164,97 @@ class Wan27ImageModel(WanxImageModel):
         raise RuntimeError(f"{model_name} task timed out after 600s")
 
 
-class Wan27VideoModel(WanxModel):
-    """Use the Wan 2.7 unified media-array I2V protocol."""
+class Wan27VideoModel(_AsyncTaskHooks, WanxModel):
+    """Use the Wan 2.7 unified media-array protocol with exact-model uploads."""
+
+    def __init__(self, config):
+        super().__init__(config)
+        self._init_task_hooks()
+
+    def _resolver_model_for_media(self, model_name: str) -> str:
+        normalized = (model_name or "").strip().lower()
+        if normalized.startswith("wan2.7-i2v") or normalized.startswith("wan2.7-r2v"):
+            return model_name
+        return super()._resolver_model_for_media(model_name)
+
+    def _create_dashscope_temp_url(self, local_path: str, model_name: str) -> str:
+        if not os.path.exists(local_path):
+            raise FileNotFoundError(f"Local media file not found: {local_path}")
+
+        upload_base = os.getenv("DASHSCOPE_UPLOAD_BASE_URL", "").strip().rstrip("/")
+        if not upload_base:
+            upload_base = get_provider_base_url("DASHSCOPE")
+        policy_url = f"{upload_base}/api/v1/uploads"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+
+        policy_resp = requests.get(
+            policy_url,
+            params={"action": "getPolicy", "model": model_name},
+            headers=headers,
+            timeout=30,
+        )
+        if policy_resp.status_code != 200:
+            raise RuntimeError(
+                f"Failed to get DashScope upload policy (HTTP {policy_resp.status_code}): "
+                f"{policy_resp.text}"
+            )
+
+        policy_body = policy_resp.json()
+        policy_data = policy_body.get("output") or policy_body.get("data") or policy_body
+        upload_host = policy_data.get("upload_host") or policy_data.get("host")
+        if not upload_host:
+            raise RuntimeError(f"DashScope upload policy missing upload_host: {policy_body}")
+
+        upload_dir = policy_data.get("upload_dir") or policy_data.get("dir") or ""
+        object_key = (
+            policy_data.get("upload_file_path")
+            or policy_data.get("object_key")
+            or policy_data.get("key")
+            or policy_data.get("file_path")
+        )
+        if not object_key:
+            filename = os.path.basename(local_path)
+            object_key = f"{upload_dir.rstrip('/')}/{filename}" if upload_dir else filename
+
+        form_data: Dict[str, str] = {"key": object_key}
+        field_map = {
+            "policy": "policy",
+            "signature": "signature",
+            "oss_access_key_id": "OSSAccessKeyId",
+            "x_oss_security_token": "x-oss-security-token",
+            "x_oss_signature_version": "x-oss-signature-version",
+            "x_oss_credential": "x-oss-credential",
+            "x_oss_date": "x-oss-date",
+            "x_oss_signature": "x-oss-signature",
+            "x_oss_object_acl": "x-oss-object-acl",
+            "x_oss_forbid_overwrite": "x-oss-forbid-overwrite",
+            "success_action_status": "success_action_status",
+            "callback": "callback",
+        }
+        for source_key, target_key in field_map.items():
+            value = policy_data.get(source_key)
+            if value:
+                form_data[target_key] = str(value)
+        form_data.setdefault("x-oss-object-acl", "private")
+        form_data.setdefault("x-oss-forbid-overwrite", "true")
+        for key, value in policy_data.items():
+            if key.startswith("x-oss-") and value and key not in form_data:
+                form_data[key] = str(value)
+
+        with open(local_path, "rb") as file_handle:
+            files = {"file": (os.path.basename(local_path), file_handle)}
+            upload_resp = requests.post(
+                upload_host,
+                data=form_data,
+                files=files,
+                timeout=120,
+            )
+        if upload_resp.status_code not in (200, 201, 204):
+            raise RuntimeError(
+                f"Failed to upload temp media to DashScope (HTTP {upload_resp.status_code}): "
+                f"{upload_resp.text}"
+            )
+        return f"oss://{object_key}"
 
     def _generate_wan_i2v_http(
         self,
@@ -160,8 +289,6 @@ class Wan27VideoModel(WanxModel):
                 extra_headers=extra_headers,
             )
 
-        # Wan 2.7 derives aspect ratio from the first frame. ratio and
-        # shot_type are legacy parameters and must not be sent.
         _ = ratio, shot_type
         final_resolution = (resolution or self.params.get("resolution") or "720P").upper()
         if final_resolution not in {"720P", "1080P"}:
@@ -180,6 +307,12 @@ class Wan27VideoModel(WanxModel):
         media = [{"type": "first_frame", "url": img_url}]
         if audio_url:
             media.append({"type": "driving_audio", "url": audio_url})
+        if any(
+            isinstance(item.get("url"), str) and item["url"].startswith("oss://")
+            for item in media
+        ):
+            headers["X-DashScope-OssResourceResolve"] = "enable"
+
         input_payload: dict[str, object] = {"prompt": prompt, "media": media}
         if negative_prompt:
             input_payload["negative_prompt"] = negative_prompt
@@ -197,16 +330,22 @@ class Wan27VideoModel(WanxModel):
             "input": input_payload,
             "parameters": parameters,
         }
-        logger.info("Calling %s with Wan 2.7 media-array payload", model_name)
-        response = requests.post(create_url, headers=headers, json=payload, timeout=120)
-        if response.status_code != 200:
-            data = response.json() if response.text else {}
-            raise RuntimeError(
-                f"{model_name} task creation failed: {data.get('message', response.text)}"
-            )
-        task_id = response.json().get("output", {}).get("task_id")
-        if not task_id:
-            raise RuntimeError(f"No task_id in response: {response.json()}")
+
+        task_id = self._resume_task_id
+        if task_id:
+            logger.info("Resuming existing %s video task %s", model_name, task_id)
+        else:
+            logger.info("Calling %s with Wan 2.7 media-array payload", model_name)
+            response = requests.post(create_url, headers=headers, json=payload, timeout=120)
+            if response.status_code != 200:
+                data = response.json() if response.text else {}
+                raise RuntimeError(
+                    f"{model_name} task creation failed: {data.get('message', response.text)}"
+                )
+            task_id = response.json().get("output", {}).get("task_id")
+            if not task_id:
+                raise RuntimeError(f"No task_id in response: {response.json()}")
+            self._notify_task_submitted(task_id, response)
         return self._poll_video_task(base, task_id, model_name)
 
     def _poll_video_task(self, base: str, task_id: str, model_name: str) -> str:
