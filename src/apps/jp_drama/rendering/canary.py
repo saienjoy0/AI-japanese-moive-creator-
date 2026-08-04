@@ -8,7 +8,12 @@ from decimal import Decimal
 from ..preparation.models import PreparedEpisode
 
 
-def select_canary_shot(prepared: PreparedEpisode, shot_id: str) -> PreparedEpisode:
+def select_canary_shot(
+    prepared: PreparedEpisode,
+    shot_id: str,
+    *,
+    target_duration_seconds: float | None = None,
+) -> PreparedEpisode:
     """Return an isolated one-shot package with independent ownership identity."""
     selected = prepared.model_copy(deep=True)
     frames = [frame for frame in selected.storyboard_frame_drafts if frame.source_shot_id == shot_id]
@@ -22,9 +27,23 @@ def select_canary_shot(prepared: PreparedEpisode, shot_id: str) -> PreparedEpiso
     if not nodes:
         raise ValueError(f"shot has no render tasks: {shot_id}")
 
+    if target_duration_seconds is not None:
+        if target_duration_seconds <= 0:
+            raise ValueError("target_duration_seconds must be greater than zero")
+        canary_duration = min(frame.duration_seconds, target_duration_seconds)
+        frame.duration_seconds = canary_duration
+        trimmed_cues = []
+        for cue in frame.dialogue_cues:
+            if cue.start_seconds >= canary_duration:
+                continue
+            cue.end_seconds = min(cue.end_seconds, canary_duration)
+            if cue.end_seconds > cue.start_seconds:
+                trimmed_cues.append(cue)
+        frame.dialogue_cues = trimmed_cues
+
     suffix = f"canary_{shot_id}"
     selected.source_digest = "sha256:" + hashlib.sha256(
-        f"{prepared.source_digest}|{suffix}|v1".encode("utf-8")
+        f"{prepared.source_digest}|{suffix}|v2|{frame.duration_seconds:.3f}".encode("utf-8")
     ).hexdigest()
     selected.project_draft.project_id = f"{prepared.project_draft.project_id}_{suffix}"
     selected.project_draft.title = f"{prepared.project_draft.title} [Canary {shot_id}]"
