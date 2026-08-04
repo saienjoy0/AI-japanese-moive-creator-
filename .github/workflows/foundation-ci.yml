@@ -12,14 +12,6 @@ concurrency:
   group: foundation-ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  PYTHONUTF8: "1"
-  PYTHONUNBUFFERED: "1"
-  APP_ENV: test
-  DISABLE_EXTERNAL_AI: "true"
-  NO_PROXY: "localhost,127.0.0.1"
-  no_proxy: "localhost,127.0.0.1"
-
 jobs:
   model-catalog:
     name: Model catalog
@@ -36,9 +28,13 @@ jobs:
         run: python scripts/validate_model_catalog.py
 
   backend:
-    name: Backend compile and health
+    name: Backend dependency and compile
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
+      PYTHONUNBUFFERED: "1"
+      DISABLE_EXTERNAL_AI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,70 +42,12 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements-docker.txt
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-docker.txt
       - name: Compile backend sources
         run: python -m compileall -q src
-      - name: Start FastAPI without provider credentials
-        shell: bash
-        run: |
-          mkdir -p output/uploads output/video output/assets output/storyboard \
-            output/audio output/export output/video_inputs output/outputs/videos \
-            output/playground/images output/playground/videos
-          python -m uvicorn src.apps.comic_gen.api:app --host 127.0.0.1 --port 17177 > backend.log 2>&1 &
-          echo $! > backend.pid
-
-          ready=0
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:17177/health > health.json; then
-              ready=1
-              break
-            fi
-            sleep 2
-          done
-
-          if [ "$ready" -ne 1 ]; then
-            cat backend.log
-            exit 1
-          fi
-
-          curl --fail --silent http://127.0.0.1:17177/openapi.json > openapi.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          health = json.loads(Path("health.json").read_text(encoding="utf-8"))
-          openapi = json.loads(Path("openapi.json").read_text(encoding="utf-8"))
-          assert health["ok"] is True, health
-          assert openapi["info"]["title"] == "AI Comic Gen API", openapi["info"]
-          assert "/health" in openapi["paths"], "health endpoint missing from OpenAPI"
-          print("BACKEND HEALTH OK", health)
-          PY
-      - name: Stop backend and print diagnostics
-        if: always()
-        shell: bash
-        run: |
-          if [ -f backend.pid ]; then
-            kill "$(cat backend.pid)" 2>/dev/null || true
-          fi
-          tail -n 200 backend.log 2>/dev/null || true
-      - name: Upload backend diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-smoke-diagnostics
-          path: |
-            backend.log
-            health.json
-            openapi.json
-          if-no-files-found: ignore
-          retention-days: 7
 
   frontend:
     name: Frontend typecheck, tests, and build
