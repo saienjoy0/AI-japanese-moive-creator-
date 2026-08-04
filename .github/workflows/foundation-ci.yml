@@ -49,7 +49,7 @@ jobs:
         run: |
           node --version
           npm --version
-          timeout 15m npm ci --no-audit --no-fund
+          timeout 15m npm install --no-audit --no-fund --prefer-offline
           test -d node_modules/next-intl
           npm ls --depth=0
       - name: Typecheck
