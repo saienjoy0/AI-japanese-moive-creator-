@@ -1,0 +1,241 @@
+{
+  "package_id": "pkg_example_001",
+  "schema_version": "1.0.0",
+  "source": {
+    "source_id": "source_example_001",
+    "kind": "manual_text",
+    "original_language": "zh-CN",
+    "title": "身分逆転の参考あらすじ",
+    "synopsis": "入店を止められた客が、実は新しい責任者だった。",
+    "rights_status": "reference_only",
+    "usage_constraints": [
+      "固有名詞、台詞、画面構成を流用しない"
+    ]
+  },
+  "beat_sheet": {
+    "beat_sheet_id": "beats_example_001",
+    "source_id": "source_example_001",
+    "core_premise": "見下された人物の正体が明らかになる",
+    "audience_hook": "冒頭で主人公が入店を拒否される",
+    "emotional_promise": "理不尽から形勢逆転する爽快感",
+    "beats": [
+      {
+        "beat_id": "beat_01",
+        "order": 1,
+        "beat_type": "hook",
+        "summary": "客が店員に止められる"
+      },
+      {
+        "beat_id": "beat_02",
+        "order": 2,
+        "beat_type": "reversal",
+        "summary": "客が本部の辞令を示す"
+      },
+      {
+        "beat_id": "beat_03",
+        "order": 3,
+        "beat_type": "cliffhanger",
+        "summary": "客が監査開始を告げる"
+      }
+    ]
+  },
+  "adaptation": {
+    "adaptation_id": "adapt_example_001",
+    "source_id": "source_example_001",
+    "beat_sheet_id": "beats_example_001",
+    "working_title": "その客、新店長です",
+    "logline": "客を追い返した店員が、客の本当の肩書きを知る。",
+    "target_audience": "日本の縦型ショートドラマ視聴者",
+    "setting": "雨の夜の郊外型コンビニ",
+    "characters": [
+      {
+        "character_id": "char_mio",
+        "display_name": "水野美緒",
+        "dramatic_role": "正体を隠した新店長"
+      },
+      {
+        "character_id": "char_ota",
+        "display_name": "太田健",
+        "dramatic_role": "客を見下す店員"
+      }
+    ],
+    "beat_mappings": [
+      {
+        "source_beat_id": "beat_01",
+        "adapted_beat_id": "jp_beat_01",
+        "adapted_summary": "美緒が入店を止められる",
+        "transformation_notes": "舞台と人物を日本向けに変更"
+      },
+      {
+        "source_beat_id": "beat_02",
+        "adapted_beat_id": "jp_beat_02",
+        "adapted_summary": "美緒が辞令を示す",
+        "transformation_notes": "身分設定を日本企業の人事異動へ変更"
+      },
+      {
+        "source_beat_id": "beat_03",
+        "adapted_beat_id": "jp_beat_03",
+        "adapted_summary": "美緒が監査を宣言する",
+        "transformation_notes": "次話へつながるフックを追加"
+      }
+    ],
+    "originality": {
+      "similarity_risk": "low",
+      "retained_elements": [
+        "立場逆転という抽象構造"
+      ],
+      "transformed_elements": [
+        "人物",
+        "舞台",
+        "制度",
+        "台詞",
+        "結末"
+      ],
+      "prohibited_copy_elements": [
+        "固有名詞",
+        "特徴的な決め台詞"
+      ],
+      "approved": true
+    }
+  },
+  "episode": {
+    "episode_id": "episode_example_001",
+    "adaptation_id": "adapt_example_001",
+    "series_id": "series_store_reversal",
+    "episode_number": 1,
+    "title": "その客、新店長です",
+    "target_duration_seconds": 45,
+    "aspect_ratio": "9:16",
+    "fps": 30,
+    "narrative_goal": "拒絶から正体開示までを45秒で描く",
+    "opening_hook_text": "その格好で、店には入れません。",
+    "closing_hook_text": "では、最初の監査を始めます。",
+    "character_ids": [
+      "char_mio",
+      "char_ota"
+    ],
+    "locations": [
+      {
+        "location_id": "loc_store",
+        "name": "郊外型コンビニ",
+        "description": "雨の夜、白い蛍光灯の店内"
+      }
+    ]
+  },
+  "shot_plan": {
+    "shot_plan_id": "shots_example_001",
+    "episode_id": "episode_example_001",
+    "target_duration_seconds": 45,
+    "shots": [
+      {
+        "shot_id": "shot_01",
+        "order": 1,
+        "adapted_beat_id": "jp_beat_01",
+        "duration_seconds": 15,
+        "location_id": "loc_store",
+        "character_ids": [
+          "char_mio",
+          "char_ota"
+        ],
+        "action": "太田が美緒の入店を止める。",
+        "visual_description": "入口で対立する二人を縦型の中景で捉える。",
+        "dialogue": [
+          {
+            "cue_id": "cue_01",
+            "speaker_character_id": "char_ota",
+            "text": "その格好で、店には入れません。",
+            "start_seconds": 2,
+            "end_seconds": 6
+          }
+        ],
+        "render_strategy": "video_plus_tts"
+      },
+      {
+        "shot_id": "shot_02",
+        "order": 2,
+        "adapted_beat_id": "jp_beat_02",
+        "duration_seconds": 15,
+        "location_id": "loc_store",
+        "character_ids": [
+          "char_mio",
+          "char_ota"
+        ],
+        "action": "美緒が本部の辞令を見せる。",
+        "visual_description": "辞令から太田の表情へ視線を誘導する。",
+        "dialogue": [
+          {
+            "cue_id": "cue_02",
+            "speaker_character_id": "char_mio",
+            "text": "私は今日から、この店の責任者です。",
+            "start_seconds": 4,
+            "end_seconds": 9
+          }
+        ],
+        "render_strategy": "native_av"
+      },
+      {
+        "shot_id": "shot_03",
+        "order": 3,
+        "adapted_beat_id": "jp_beat_03",
+        "duration_seconds": 15,
+        "location_id": "loc_store",
+        "character_ids": [
+          "char_mio",
+          "char_ota"
+        ],
+        "action": "美緒が店内を見回し、太田が青ざめる。",
+        "visual_description": "太田の表情へゆっくり寄る。",
+        "dialogue": [
+          {
+            "cue_id": "cue_03",
+            "speaker_character_id": "char_mio",
+            "text": "では、最初の監査を始めます。",
+            "start_seconds": 3,
+            "end_seconds": 7
+          }
+        ],
+        "render_strategy": "video_plus_tts"
+      }
+    ]
+  },
+  "cost_plan": {
+    "cost_plan_id": "cost_example_001",
+    "episode_id": "episode_example_001",
+    "currency": "JPY",
+    "budget_limit": 2200,
+    "contingency_rate": 0.1,
+    "hard_stop": true,
+    "shot_estimates": [
+      {
+        "shot_id": "shot_01",
+        "render_strategy": "video_plus_tts",
+        "provider": "provider-a",
+        "model": "model-v1",
+        "estimated_primary_cost": 400,
+        "reserved_retry_cost": 150,
+        "max_attempts": 2,
+        "fallback_strategy": "still_motion"
+      },
+      {
+        "shot_id": "shot_02",
+        "render_strategy": "native_av",
+        "provider": "provider-b",
+        "model": "model-av",
+        "estimated_primary_cost": 700,
+        "reserved_retry_cost": 250,
+        "max_attempts": 2,
+        "fallback_strategy": "video_plus_tts"
+      },
+      {
+        "shot_id": "shot_03",
+        "render_strategy": "video_plus_tts",
+        "provider": "provider-a",
+        "model": "model-v1",
+        "estimated_primary_cost": 400,
+        "reserved_retry_cost": 100,
+        "max_attempts": 2,
+        "fallback_strategy": "still_motion"
+      }
+    ]
+  }
+}
