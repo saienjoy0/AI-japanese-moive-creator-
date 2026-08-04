@@ -46,7 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
-        run: timeout 10m npm ci --no-audit --no-fund
+        run: timeout 10m npm ci --ignore-scripts --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
