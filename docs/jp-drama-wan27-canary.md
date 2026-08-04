@@ -243,15 +243,13 @@ Pull-request CI:
 
 ## Final validation
 
-Final head: `9278a28402b96491e099e3635e222c138aeab57e`
-
-- Japanese Drama Wan 2.7 Canary: run `30911983990`
-- Japanese Drama Live Providers: run `30911984004`
-- Japanese Drama Mock Render: run `30911983991`
-- Japanese Drama Domain: run `30911984065`
-- Japanese Drama Preparation: run `30911984990`
-- Japanese Drama LumenX Persistence: run `30911984993`
-- Foundation CI: run `30911983953`
+- Japanese Drama Wan 2.7 Canary: success
+- Japanese Drama Live Providers: success
+- Japanese Drama Mock Render: success
+- Japanese Drama Domain: success
+- Japanese Drama Preparation: success
+- Japanese Drama LumenX Persistence: success
+- Foundation CI: success
 - external paid provider calls: `0`
 
 ## Remaining boundary
