@@ -1,39 +1,50 @@
 {
-  "probe_run_id": 30876891872,
-  "source_sha": "6510b12350a40510f469b2c223d6d3f99797554e",
+  "probe_run_id": 30877388641,
+  "source_sha": "e98857847913ff9bc777334c1c41c44e2a6c116a",
   "runs": [
     {
-      "id": 30876891883,
+      "id": 30877388661,
       "name": "Foundation CI",
       "event": "push",
-      "status": "pending",
+      "status": "in_progress",
       "conclusion": null,
-      "head_sha": "6510b12350a40510f469b2c223d6d3f99797554e",
-      "run_number": 14,
-      "created_at": "2026-08-04T04:10:42Z",
-      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891883"
+      "head_sha": "e98857847913ff9bc777334c1c41c44e2a6c116a",
+      "run_number": 15,
+      "created_at": "2026-08-04T04:20:30Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661"
+    },
+    {
+      "id": 30877388641,
+      "name": "CI Trigger Probe",
+      "event": "push",
+      "status": "in_progress",
+      "conclusion": null,
+      "head_sha": "e98857847913ff9bc777334c1c41c44e2a6c116a",
+      "run_number": 12,
+      "created_at": "2026-08-04T04:20:30Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388641"
     },
     {
       "id": 30876891872,
       "name": "CI Trigger Probe",
       "event": "push",
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "success",
       "head_sha": "6510b12350a40510f469b2c223d6d3f99797554e",
       "run_number": 11,
       "created_at": "2026-08-04T04:10:42Z",
       "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891872"
     },
     {
-      "id": 30876786882,
+      "id": 30876891883,
       "name": "Foundation CI",
       "event": "push",
-      "status": "in_progress",
-      "conclusion": null,
-      "head_sha": "024ffc355226771b9016ca3387fb4e2ee425628e",
-      "run_number": 13,
-      "created_at": "2026-08-04T04:08:44Z",
-      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786882"
+      "status": "completed",
+      "conclusion": "failure",
+      "head_sha": "6510b12350a40510f469b2c223d6d3f99797554e",
+      "run_number": 14,
+      "created_at": "2026-08-04T04:10:42Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891883"
     },
     {
       "id": 30876786862,
@@ -47,6 +58,28 @@
       "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786862"
     },
     {
+      "id": 30876786882,
+      "name": "Foundation CI",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "head_sha": "024ffc355226771b9016ca3387fb4e2ee425628e",
+      "run_number": 13,
+      "created_at": "2026-08-04T04:08:44Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786882"
+    },
+    {
+      "id": 30876469132,
+      "name": "Foundation CI",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "head_sha": "a74db3e33bda9624d3ec1bdcae1fdeeffb4d9f94",
+      "run_number": 12,
+      "created_at": "2026-08-04T04:02:32Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876469132"
+    },
+    {
       "id": 30876469124,
       "name": "CI Trigger Probe",
       "event": "push",
@@ -56,17 +89,6 @@
       "run_number": 9,
       "created_at": "2026-08-04T04:02:32Z",
       "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876469124"
-    },
-    {
-      "id": 30876469132,
-      "name": "Foundation CI",
-      "event": "push",
-      "status": "in_progress",
-      "conclusion": null,
-      "head_sha": "a74db3e33bda9624d3ec1bdcae1fdeeffb4d9f94",
-      "run_number": 12,
-      "created_at": "2026-08-04T04:02:32Z",
-      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876469132"
     },
     {
       "id": 30876380032,
@@ -199,37 +221,67 @@
       "run_number": 6,
       "created_at": "2026-08-04T03:53:57Z",
       "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876052103"
-    },
-    {
-      "id": 30875994377,
-      "name": "CI Trigger Probe",
-      "event": "push",
-      "status": "completed",
-      "conclusion": "success",
-      "head_sha": "09ce299af0a794579dab4d526e1533c5e374a58e",
-      "run_number": 2,
-      "created_at": "2026-08-04T03:52:49Z",
-      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875994377"
-    },
-    {
-      "id": 30875993867,
-      "name": ".github/workflows/foundation-ci.yml",
-      "event": "push",
-      "status": "completed",
-      "conclusion": "failure",
-      "head_sha": "09ce299af0a794579dab4d526e1533c5e374a58e",
-      "run_number": 5,
-      "created_at": "2026-08-04T03:52:48Z",
-      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875993867"
     }
   ],
   "checks": [
     {
-      "id": 91890086305,
+      "id": 91891498959,
+      "name": "Model catalog",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498959",
+      "output": {
+        "title": null,
+        "summary": null,
+        "text": null,
+        "annotations_count": 1
+      }
+    },
+    {
+      "id": 91891498934,
+      "name": "Docker Compose config",
+      "status": "completed",
+      "conclusion": "success",
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498934",
+      "output": {
+        "title": null,
+        "summary": null,
+        "text": null,
+        "annotations_count": 1
+      }
+    },
+    {
+      "id": 91891498929,
+      "name": "Offline Japanese MP4 smoke render",
+      "status": "in_progress",
+      "conclusion": null,
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498929",
+      "output": {
+        "title": null,
+        "summary": null,
+        "text": null,
+        "annotations_count": 0
+      }
+    },
+    {
+      "id": 91891498927,
+      "name": "Frontend typecheck, tests, and build",
+      "status": "in_progress",
+      "conclusion": null,
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498927",
+      "output": {
+        "title": null,
+        "summary": null,
+        "text": null,
+        "annotations_count": 0
+      }
+    },
+    {
+      "id": 91891498703,
       "name": "probe",
       "status": "in_progress",
       "conclusion": null,
-      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891872/job/91890086305",
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388641/job/91891498703",
       "output": {
         "title": null,
         "summary": null,
