@@ -1,9 +1,12 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "mode": "live",
   "dashscope": {
     "provider": "dashscope",
     "api_key_env": "DASHSCOPE_API_KEY",
+    "base_url_env": "DASHSCOPE_BASE_URL",
+    "workspace_id_env": "DASHSCOPE_WORKSPACE_ID",
+    "region": "singapore",
     "image_model": "wan2.7-image-pro",
     "video_model": "wan2.7-i2v",
     "native_av_video_model": "wan2.7-i2v",
@@ -14,8 +17,8 @@
       "char_mio": "Ono Anna",
       "char_ota": "Ono Anna"
     },
-    "image_size": "576*1024",
-    "video_ratio": "9:16",
+    "image_size": "960*1696",
+    "image_thinking_mode": true,
     "video_resolution": "720P",
     "provider_clip_seconds": 5,
     "prompt_extend": true,
