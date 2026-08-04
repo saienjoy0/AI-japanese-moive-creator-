@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: foundation-ci-${{ github.workflow }}-${{ github.ref }}
@@ -172,3 +172,54 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate Docker Compose
         run: docker compose config > /dev/null
+
+  temporary-run-report:
+    name: Temporary run report
+    if: always() && github.event_name == 'push' && github.ref_name == 'feature/ci-foundation-smoke-tests'
+    needs: [model-catalog, backend, frontend, offline-mock-episode, docker-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ci-foundation-smoke-tests
+      - name: Record run id and job outcomes
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SOURCE_SHA: ${{ github.sha }}
+          MODEL_CATALOG_RESULT: ${{ needs.model-catalog.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          MOCK_EPISODE_RESULT: ${{ needs.offline-mock-episode.result }}
+          DOCKER_RESULT: ${{ needs.docker-config.result }}
+        run: |
+          mkdir -p ci-results
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = {
+              "run_id": int(os.environ["RUN_ID"]),
+              "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              "source_sha": os.environ["SOURCE_SHA"],
+              "results": {
+                  "model_catalog": os.environ["MODEL_CATALOG_RESULT"],
+                  "backend": os.environ["BACKEND_RESULT"],
+                  "frontend": os.environ["FRONTEND_RESULT"],
+                  "offline_mock_episode": os.environ["MOCK_EPISODE_RESULT"],
+                  "docker_config": os.environ["DOCKER_RESULT"],
+              },
+          }
+          Path("ci-results/foundation-latest.json").write_text(
+              json.dumps(report, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Commit temporary report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- ci-results/foundation-latest.json
+          git commit -m "chore: record foundation ci result [skip ci]"
+          git push origin HEAD:feature/ci-foundation-smoke-tests
