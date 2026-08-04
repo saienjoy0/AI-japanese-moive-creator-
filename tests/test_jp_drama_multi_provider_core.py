@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from src.apps.jp_drama import EpisodePackage
 from src.apps.jp_drama.preparation import compile_episode
 from src.apps.jp_drama.preparation.compiler import load_model_catalog
+from src.apps.jp_drama.preparation.models import RenderGraph, RenderTaskNode
 from src.apps.jp_drama.rendering import (
     CostEstimate,
     DialogueLine,
@@ -24,6 +25,7 @@ from src.apps.jp_drama.rendering import (
     ReferenceAsset,
     SeedancePlatformAdapter,
     ShotGenerationSpec,
+    Wan27ImagePlanningAdapter,
     Wan27PlanningAdapter,
     build_default_provider_registry,
 )
@@ -44,6 +46,23 @@ def _prepared():
         strict=True,
         source_payload=payload,
     )
+
+
+def _prepared_with_external_tasks(*task_types: str):
+    prepared = _prepared()
+    shot_id = prepared.storyboard_frame_drafts[0].source_shot_id
+    nodes = [
+        RenderTaskNode(
+            task_id=f"test_{shot_id}_{task_type}",
+            shot_id=shot_id,
+            task_type=task_type,
+            depends_on=[],
+            external_api_required=True,
+            provider_required=True,
+        )
+        for task_type in task_types
+    ]
+    return prepared.model_copy(update={"render_graph": RenderGraph(nodes=nodes)})
 
 
 def _video_spec(
@@ -82,6 +101,19 @@ def _video_spec(
     )
 
 
+def _image_spec() -> ShotGenerationSpec:
+    return ShotGenerationSpec(
+        source_digest="sha256:" + ("b" * 64),
+        shot_id="shot_01",
+        task_id="shot_01:generate_image",
+        modality="image",
+        duration_seconds=10,
+        prompt="A consistent Japanese short-drama character keyframe.",
+        audio_strategy="silent",
+        required_capabilities=ProviderCapabilitiesRequired(modality="image"),
+    )
+
+
 def test_registry_is_explicit_and_rejects_duplicate_routes() -> None:
     registry = ProviderRegistry()
     registry.register(MockProviderAdapter())
@@ -108,6 +140,20 @@ def test_seedance_platform_is_manual_native_av_route() -> None:
 
     with pytest.raises(ProviderCoreError, match="imported by an operator"):
         adapter.download(adapter.poll(submission), ROOT / "output" / "unused")
+
+
+def test_seedance_capabilities_only_claim_the_current_manual_contract() -> None:
+    capabilities = SeedancePlatformAdapter().capabilities()
+    assert capabilities.text_to_video is True
+    assert capabilities.image_to_video is True
+    assert capabilities.reference_to_video is True
+    assert capabilities.first_last_frame is True
+    assert capabilities.native_audio is True
+    assert capabilities.video_continuation is False
+    assert capabilities.driving_audio is False
+    assert capabilities.reference_voice is False
+    assert capabilities.multi_shot is False
+    assert capabilities.video_editing is False
 
 
 def test_seedance_platform_enforces_official_reference_and_duration_limits() -> None:
@@ -180,7 +226,37 @@ def test_wan_planning_adapter_reuses_pr8_costs_and_blocks_unmigrated_audio() -> 
         adapter.submit(request)
 
 
-def test_planner_compiles_prepared_episode_without_changing_it() -> None:
+def test_wan_image_route_reuses_pr8_costs_and_delegates_execution() -> None:
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    adapter = Wan27ImagePlanningAdapter(config)
+    spec = _image_spec()
+
+    assert adapter.validate(spec).valid is True
+    estimate = adapter.estimate_cost(spec)
+    assert estimate.native_cost is not None
+    assert estimate.native_cost.currency == "CNY"
+    assert estimate.native_cost.amount > 0
+
+    request = adapter.prepare(spec)
+    assert request.route_id == "wan/image"
+    assert request.payload["provider_options"]["model"] == "wan2.7-image-pro"
+    assert request.payload["provider_options"]["size"] == "960*1696"
+    with pytest.raises(ProviderCoreError, match="delegated to Wan27LiveTaskExecutor"):
+        adapter.submit(request)
+
+
+def test_default_registry_contains_manual_seedance_and_both_wan_visual_routes() -> None:
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    registry = build_default_provider_registry(config)
+    assert registry.route_ids() == [
+        "mock/video",
+        "seedance/platform",
+        "wan/i2v",
+        "wan/image",
+    ]
+
+
+def test_planner_scope_tracks_visual_tasks_and_delegates_tts() -> None:
     prepared = _prepared()
     original = prepared.to_canonical_json()
     registry = ProviderRegistry()
@@ -194,11 +270,17 @@ def test_planner_compiles_prepared_episode_without_changing_it() -> None:
     )
 
     plan = planner.plan(prepared, profile)
+    assert plan.plan_scope == "visual_generation"
     assert plan.source_digest == prepared.source_digest
     assert plan.profile_id == "mock-pinned"
     assert plan.estimated_total_cny == 0
-    assert plan.tasks
+    assert len(plan.tasks) == 3
     assert {item.route_id for item in plan.tasks.values()} == {"mock/video"}
+    assert len(plan.delegated_tasks) == 2
+    assert {item.task_type for item in plan.delegated_tasks} == {"generate_tts"}
+    assert {
+        item.delegated_executor for item in plan.delegated_tasks
+    } == {"existing/qwen3-tts"}
     assert prepared.to_canonical_json() == original
 
     restored = type(plan).model_validate_json(plan.to_canonical_json())
@@ -208,6 +290,103 @@ def test_planner_compiles_prepared_episode_without_changing_it() -> None:
     first_task = next(iter(plan.tasks.values()))
     with pytest.raises(ValidationError, match="frozen"):
         first_task.generation_spec.prompt = "changed"
+
+
+def test_video_plus_tts_can_plan_wan_video_and_delegate_qwen_tts() -> None:
+    prepared = _prepared_with_external_tasks("generate_video", "generate_tts")
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    planner = ProviderExecutionPlanner(build_default_provider_registry(config))
+    plan = planner.plan(
+        prepared,
+        ProviderProfile(
+            profile_id="wan-video-plus-tts",
+            routing_mode="pinned",
+            route_priority=["wan/i2v"],
+        ),
+    )
+
+    assert [item.route_id for item in plan.tasks.values()] == ["wan/i2v"]
+    assert [item.task_type for item in plan.delegated_tasks] == ["generate_tts"]
+    assert plan.delegated_tasks[0].delegated_executor == "existing/qwen3-tts"
+
+
+def test_native_av_can_plan_seedance_platform() -> None:
+    prepared = _prepared_with_external_tasks("generate_native_av")
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    registry = build_default_provider_registry(config)
+    planner = ProviderExecutionPlanner(registry)
+    plan = planner.plan(
+        prepared,
+        ProviderProfile(
+            profile_id="seedance-native-av",
+            routing_mode="pinned",
+            route_priority=["seedance/platform"],
+        ),
+    )
+
+    task = next(iter(plan.tasks.values()))
+    assert task.route_id == "seedance/platform"
+    submission = registry.require(task.route_id).submit(
+        registry.require(task.route_id).prepare(task.generation_spec)
+    )
+    assert submission.status == "awaiting_operator"
+
+
+def test_still_motion_can_plan_wan_image_and_delegate_tts() -> None:
+    prepared = _prepared_with_external_tasks("generate_image", "generate_tts")
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    planner = ProviderExecutionPlanner(build_default_provider_registry(config))
+    plan = planner.plan(
+        prepared,
+        ProviderProfile(
+            profile_id="wan-still-motion",
+            routing_mode="pinned",
+            route_priority=["wan/image"],
+        ),
+    )
+
+    assert [item.route_id for item in plan.tasks.values()] == ["wan/image"]
+    assert [item.task_type for item in plan.delegated_tasks] == ["generate_tts"]
+
+
+def test_seedance_first_records_wan_video_fallback_without_auto_execution() -> None:
+    prepared = _prepared()
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    planner = ProviderExecutionPlanner(build_default_provider_registry(config))
+    plan = planner.plan(
+        prepared,
+        ProviderProfile(
+            profile_id="seedance-first",
+            routing_mode="ordered_fallback",
+            route_priority=["seedance/platform", "wan/i2v", "wan/image"],
+        ),
+    )
+
+    video_tasks = [
+        item for item in plan.tasks.values()
+        if item.generation_spec.required_capabilities.image_to_video
+    ]
+    native_tasks = [
+        item for item in plan.tasks.values()
+        if item.generation_spec.required_capabilities.native_audio
+    ]
+    assert video_tasks
+    assert all(item.route_id == "seedance/platform" for item in video_tasks)
+    assert all(item.fallback_route_id == "wan/i2v" for item in video_tasks)
+    assert all(item.fallback_requires_approval is True for item in video_tasks)
+    assert native_tasks
+    assert all(item.route_id == "seedance/platform" for item in native_tasks)
+    assert all(item.fallback_route_id is None for item in native_tasks)
+
+
+def test_fallback_approval_cannot_be_disabled() -> None:
+    with pytest.raises(ValidationError):
+        ProviderProfile(
+            profile_id="unsafe-fallback",
+            routing_mode="ordered_fallback",
+            route_priority=["mock/video", "mock/fallback"],
+            fallback_requires_approval=False,
+        )
 
 
 def test_planner_rejects_a_budget_when_selected_cost_is_unknown() -> None:
@@ -231,11 +410,26 @@ def test_planner_rejects_a_budget_when_selected_cost_is_unknown() -> None:
         )
 
 
-def test_planner_requires_compatible_route_and_records_approved_fallback() -> None:
+def test_planner_rejects_a_wan_plan_that_exceeds_the_budget() -> None:
+    prepared = _prepared_with_external_tasks("generate_video", "generate_tts")
+    config = LiveProviderConfig.load(PROVIDER_PATH)
+    planner = ProviderExecutionPlanner(build_default_provider_registry(config))
+    with pytest.raises(ProviderPlanningError, match="exceeds profile limit"):
+        planner.plan(
+            prepared,
+            ProviderProfile(
+                profile_id="wan-zero-budget",
+                routing_mode="pinned",
+                route_priority=["wan/i2v"],
+                max_cost_cny=0,
+            ),
+        )
+
+
+def test_planner_requires_a_compatible_route() -> None:
     prepared = _prepared()
     config = LiveProviderConfig.load(PROVIDER_PATH)
-    registry = build_default_provider_registry(config)
-    planner = ProviderExecutionPlanner(registry)
+    planner = ProviderExecutionPlanner(build_default_provider_registry(config))
 
     with pytest.raises(ProviderPlanningError, match="no compatible provider route"):
         planner.plan(
@@ -246,17 +440,3 @@ def test_planner_requires_compatible_route_and_records_approved_fallback() -> No
                 route_priority=["wan/i2v"],
             ),
         )
-
-    registry.register(MockProviderAdapter("mock/fallback"))
-    plan = planner.plan(
-        prepared,
-        ProviderProfile(
-            profile_id="mock-fallback",
-            routing_mode="ordered_fallback",
-            route_priority=["mock/video", "mock/fallback"],
-            fallback_requires_approval=True,
-        ),
-    )
-    assert plan.tasks
-    assert all(item.fallback_route_id == "mock/fallback" for item in plan.tasks.values())
-    assert all(item.fallback_requires_approval for item in plan.tasks.values())
