@@ -1,0 +1,131 @@
+name: Foundation CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  model-catalog:
+    name: Model catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install validator dependency
+        run: python -m pip install --disable-pip-version-check pyyaml
+      - name: Validate catalog and generated artifacts
+        run: python scripts/validate_model_catalog.py
+
+  backend:
+    name: Backend compile and health
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+      - name: Compile backend sources
+        run: python -m compileall -q src scripts
+      - name: Start and validate FastAPI
+        run: python scripts/backend_server_smoke.py
+      - name: Upload backend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-smoke-diagnostics
+          path: |
+            backend.log
+            health.json
+            openapi.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  frontend:
+    name: Frontend typecheck, tests, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:17177
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.1 --activate
+          pnpm --version
+      - name: Install frontend dependencies
+        run: |
+          timeout 15m pnpm install --no-frozen-lockfile --ignore-scripts
+          test -d node_modules/next-intl
+          pnpm list --depth=0
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm run build
+
+  offline-mock-episode:
+    name: Offline Japanese MP4 smoke render
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install FFmpeg and Japanese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+      - name: Render and validate three-shot episode
+        run: python scripts/mock_episode_smoke.py
+      - name: Upload mock episode
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-mock-episode
+          path: artifacts/mock_episode
+          if-no-files-found: error
+          retention-days: 14
+
+  docker-config:
+    name: Docker Compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Compose environment
+        run: cp .env.example .env
+      - name: Validate Docker Compose
+        run: docker compose config > /dev/null
