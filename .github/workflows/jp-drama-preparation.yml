@@ -1,0 +1,102 @@
+name: Japanese Drama Preparation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - ".github/workflows/jp-drama-preparation.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - ".github/workflows/jp-drama-preparation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-preparation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-offline:
+    name: Compile deterministic LumenX drafts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test dependencies
+        run: python -m pip install --disable-pip-version-check "pydantic>=2,<3" "pytest>=8,<9"
+      - name: Compile Japanese drama package
+        run: python -m compileall -q src/apps/jp_drama
+      - name: Run PR3 and PR4 tests
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_domain.py \
+            tests/test_jp_drama_example.py \
+            tests/test_jp_drama_preparation.py
+      - name: Run strict dry-run CLI twice
+        run: |
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input examples/jp_drama/minimal_episode_package.json \
+            --output output/jp_drama/prepared-a \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --dry-run \
+            --strict
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input examples/jp_drama/minimal_episode_package.json \
+            --output output/jp_drama/prepared-b \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --dry-run \
+            --strict
+      - name: Verify deterministic output and no external calls
+        run: |
+          cmp output/jp_drama/prepared-a/prepared_episode.json output/jp_drama/prepared-b/prepared_episode.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("output/jp_drama/prepared-a/readiness_report.json").read_text())
+          assert report["external_api_calls"] == 0
+          assert report["generation_ready"] is True
+          PY
+      - name: Verify protected LumenX areas are unchanged
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git diff --quiet "$BASE_SHA"...HEAD -- \
+            src/apps/comic_gen/models.py \
+            src/apps/comic_gen/pipeline.py \
+            src/apps/comic_gen/video.py \
+            src/apps/comic_gen/audio.py \
+            frontend; then
+            echo "PR4 must not change protected LumenX areas."
+            git diff --stat "$BASE_SHA"...HEAD -- \
+              src/apps/comic_gen/models.py \
+              src/apps/comic_gen/pipeline.py \
+              src/apps/comic_gen/video.py \
+              src/apps/comic_gen/audio.py \
+              frontend
+            exit 1
+          fi
+      - name: Upload offline preparation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-prepared-episode
+          path: output/jp_drama/prepared-a/
+          retention-days: 7
