@@ -1,10 +1,10 @@
 [
   {
-    "id": 91888010381,
+    "id": 91888125372,
     "name": "probe",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185720/job/91888010381",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876226029/job/91888125372",
     "output": {
       "title": null,
       "summary": null,
@@ -13,16 +13,42 @@
     }
   },
   {
-    "id": 91888010210,
-    "name": "Model catalog",
+    "id": 91888125305,
+    "name": "Offline Japanese MP4 smoke render",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185714/job/91888010210",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876226024/job/91888125305",
     "output": {
       "title": null,
       "summary": null,
       "text": null,
       "annotations_count": 0
+    }
+  },
+  {
+    "id": 91888125279,
+    "name": "Model catalog",
+    "status": "completed",
+    "conclusion": "success",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876226024/job/91888125279",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 1
+    }
+  },
+  {
+    "id": 91888125266,
+    "name": "Docker Compose config",
+    "status": "completed",
+    "conclusion": "failure",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876226024/job/91888125266",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 2
     }
   }
 ]
