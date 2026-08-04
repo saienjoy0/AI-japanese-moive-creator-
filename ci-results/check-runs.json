@@ -1,36 +1,10 @@
 [
   {
-    "id": 91891498959,
-    "name": "Model catalog",
-    "status": "completed",
-    "conclusion": "success",
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498959",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 1
-    }
-  },
-  {
-    "id": 91891498934,
+    "id": 91892456134,
     "name": "Docker Compose config",
-    "status": "completed",
-    "conclusion": "success",
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498934",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 1
-    }
-  },
-  {
-    "id": 91891498929,
-    "name": "Offline Japanese MP4 smoke render",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498929",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877713689/job/91892456134",
     "output": {
       "title": null,
       "summary": null,
@@ -39,11 +13,11 @@
     }
   },
   {
-    "id": 91891498927,
+    "id": 91892456115,
     "name": "Frontend typecheck, tests, and build",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388661/job/91891498927",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877713689/job/91892456115",
     "output": {
       "title": null,
       "summary": null,
@@ -52,11 +26,37 @@
     }
   },
   {
-    "id": 91891498703,
+    "id": 91892456098,
+    "name": "Model catalog",
+    "status": "queued",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877713689/job/91892456098",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91892456097,
+    "name": "Offline Japanese MP4 smoke render",
+    "status": "queued",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877713689/job/91892456097",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91892419451,
     "name": "probe",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877388641/job/91891498703",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30877713694/job/91892419451",
     "output": {
       "title": null,
       "summary": null,
