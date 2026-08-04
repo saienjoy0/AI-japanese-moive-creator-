@@ -105,9 +105,19 @@ def _build_character(seed: CharacterSeed) -> Character:
         name=seed.name,
         description=description,
         persona=seed.source_character_id,
-        reference_sheet=AssetUnit(image_prompt=seed.visual_prompt),
+        reference_sheet=AssetUnit(
+            image_prompt=seed.visual_prompt,
+            image_updated_at=0.0,
+            video_updated_at=0.0,
+        ),
+        full_body=AssetUnit(image_updated_at=0.0, video_updated_at=0.0),
+        three_views=AssetUnit(image_updated_at=0.0, video_updated_at=0.0),
+        head_shot=AssetUnit(image_updated_at=0.0, video_updated_at=0.0),
         full_body_prompt=seed.visual_prompt,
         video_prompt=seed.visual_prompt,
+        full_body_updated_at=0.0,
+        three_view_updated_at=0.0,
+        headshot_updated_at=0.0,
         status=GenerationStatus.PENDING,
     )
 
