@@ -1,0 +1,159 @@
+name: Japanese Drama Live Providers
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-live-providers.md"
+      - ".github/workflows/jp-drama-live-providers.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-live-providers.md"
+      - ".github/workflows/jp-drama-live-providers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-live-providers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  provider-contract:
+    name: Validate live provider integration without paid calls
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg, Japanese fonts, and focused Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+          python -m pip install --disable-pip-version-check \
+            "pydantic>=2,<3" "pytest>=8,<9" "pyyaml>=6,<7"
+
+      - name: Compile Japanese drama package
+        run: python -m compileall -q src/apps/jp_drama
+
+      - name: Run PR3 through PR7 focused tests
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_domain.py \
+            tests/test_jp_drama_example.py \
+            tests/test_jp_drama_preparation.py \
+            tests/test_jp_drama_persistence.py \
+            tests/test_jp_drama_mock_render.py \
+            tests/test_jp_drama_live_providers.py
+
+      - name: Prepare strict sample
+        run: |
+          rm -rf output/jp_drama
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input examples/jp_drama/minimal_episode_package.json \
+            --output output/jp_drama/prepared \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --dry-run \
+            --strict
+
+      - name: Run provider preflight with no credentials and no API calls
+        run: |
+          unset DASHSCOPE_API_KEY
+          python -m src.apps.jp_drama.workflows.render_episode \
+            --input output/jp_drama/prepared/prepared_episode.json \
+            --output output/jp_drama/live_episode.mp4 \
+            --providers examples/jp_drama/dashscope_live_providers.json \
+            --preflight \
+            --print-report \
+            --report output/jp_drama/provider_preflight.json
+          test ! -e output/jp_drama/live_episode.mp4
+          test ! -e output/jp_drama/.live_episode_work
+
+      - name: Verify preflight contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("output/jp_drama/provider_preflight.json").read_text(encoding="utf-8")
+          )
+          assert report["valid"] is True
+          assert report["provider_manifest"]["provider"] == "dashscope"
+          assert report["provider_manifest"]["image_model"] == "wan2.7-image-pro"
+          assert report["provider_manifest"]["video_model"] == "wan2.7-i2v"
+          assert report["provider_manifest"]["tts_model"] == "qwen3-tts-flash"
+          assert report["credentials_present"] is False
+          assert report["estimated_external_api_calls"] == 9
+          PY
+
+      - name: Verify provider config contains only a credential variable name
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("examples/jp_drama/dashscope_live_providers.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          provider = payload["dashscope"]
+          assert provider["api_key_env"] == "DASHSCOPE_API_KEY"
+          assert "api_key" not in provider
+          assert "token" not in provider
+          PY
+
+      - name: Verify protected LumenX core and frontend files are unchanged
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git diff --quiet "$BASE_SHA"...HEAD -- \
+            src/models/image.py \
+            src/models/wanx.py \
+            src/audio/tts.py \
+            src/apps/comic_gen/models.py \
+            src/apps/comic_gen/pipeline.py \
+            src/apps/comic_gen/video.py \
+            src/apps/comic_gen/audio.py \
+            frontend; then
+            echo "PR7 must reuse, not modify, existing LumenX provider/core files."
+            git diff --stat "$BASE_SHA"...HEAD -- \
+              src/models/image.py \
+              src/models/wanx.py \
+              src/audio/tts.py \
+              src/apps/comic_gen/models.py \
+              src/apps/comic_gen/pipeline.py \
+              src/apps/comic_gen/video.py \
+              src/apps/comic_gen/audio.py \
+              frontend
+            exit 1
+          fi
+
+      - name: Upload provider contract evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-live-provider-contract
+          path: |
+            output/jp_drama/provider_preflight.json
+            examples/jp_drama/dashscope_live_providers.json
+          retention-days: 7
