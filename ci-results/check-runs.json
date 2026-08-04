@@ -1,10 +1,75 @@
 [
   {
-    "id": 91893338570,
+    "id": 91893637138,
     "name": "probe",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878038200/job/91893338570",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878136629/job/91893637138",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91893637068,
+    "name": "Frontend typecheck, tests, and build",
+    "status": "in_progress",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878136614/job/91893637068",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91893637044,
+    "name": "Docker Compose config",
+    "status": "completed",
+    "conclusion": "success",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878136614/job/91893637044",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 1
+    }
+  },
+  {
+    "id": 91893637040,
+    "name": "Model catalog",
+    "status": "in_progress",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878136614/job/91893637040",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91893637036,
+    "name": "Offline Japanese MP4 smoke render",
+    "status": "in_progress",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878136614/job/91893637036",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91893636999,
+    "name": "Backend dependency and compile",
+    "status": "in_progress",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30878136614/job/91893636999",
     "output": {
       "title": null,
       "summary": null,
