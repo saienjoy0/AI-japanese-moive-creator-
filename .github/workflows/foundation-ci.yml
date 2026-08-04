@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: foundation-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   model-catalog:
     name: Model catalog
@@ -26,12 +30,14 @@ jobs:
   frontend:
     name: Frontend typecheck, tests, and build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
     env:
       NEXT_PUBLIC_API_URL: http://127.0.0.1:17177
+      NPM_CONFIG_AUDIT: "false"
+      NPM_CONFIG_FUND: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,7 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
-        run: npm ci
+        run: timeout 10m npm ci --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
