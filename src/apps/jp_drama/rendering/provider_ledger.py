@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-CANARY_LEDGER_SCHEMA_VERSION = "1.0.0"
+CANARY_LEDGER_SCHEMA_VERSION = "1.1.0"
 
 
 class ProviderLedgerError(RuntimeError):
@@ -66,6 +66,7 @@ class ProviderOperationRecord(LedgerModel):
 class CanaryProviderLedger(LedgerModel):
     schema_version: Literal[CANARY_LEDGER_SCHEMA_VERSION] = CANARY_LEDGER_SCHEMA_VERSION
     source_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    execution_profile: str = Field(min_length=1)
     shot_id: str = Field(min_length=1)
     max_api_calls: int = Field(ge=0, le=3)
     max_cost_cny: Decimal = Field(ge=0)
@@ -108,6 +109,7 @@ class CanaryProviderLedgerStore:
         self,
         *,
         source_digest: str,
+        execution_profile: str,
         shot_id: str,
         max_api_calls: int,
         max_cost_cny: Decimal,
@@ -119,6 +121,8 @@ class CanaryProviderLedgerStore:
             conflicts: list[str] = []
             if ledger.source_digest != source_digest:
                 conflicts.append("source digest")
+            if ledger.execution_profile != execution_profile:
+                conflicts.append("provider execution profile")
             if ledger.shot_id != shot_id:
                 conflicts.append("shot ID")
             if ledger.max_api_calls != max_api_calls:
@@ -134,6 +138,7 @@ class CanaryProviderLedgerStore:
 
         ledger = CanaryProviderLedger(
             source_digest=source_digest,
+            execution_profile=execution_profile,
             shot_id=shot_id,
             max_api_calls=max_api_calls,
             max_cost_cny=max_cost_cny,
