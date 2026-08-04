@@ -1,10 +1,32 @@
 [
   {
-    "id": 30875994377,
+    "id": 30876052600,
     "name": "CI Trigger Probe",
     "event": "push",
     "status": "in_progress",
     "conclusion": null,
+    "head_sha": "3e9f28a2484c3c826a79a4720cb06643ae3acdfb",
+    "run_number": 3,
+    "created_at": "2026-08-04T03:53:58Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876052600"
+  },
+  {
+    "id": 30876052103,
+    "name": ".github/workflows/foundation-ci.yml",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "3e9f28a2484c3c826a79a4720cb06643ae3acdfb",
+    "run_number": 6,
+    "created_at": "2026-08-04T03:53:57Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876052103"
+  },
+  {
+    "id": 30875994377,
+    "name": "CI Trigger Probe",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
     "head_sha": "09ce299af0a794579dab4d526e1533c5e374a58e",
     "run_number": 2,
     "created_at": "2026-08-04T03:52:49Z",
