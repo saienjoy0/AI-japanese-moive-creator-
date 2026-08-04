@@ -53,11 +53,11 @@ Workspace inference and temporary uploads are configured separately:
 
 ```text
 Inference:
-  beijing  -> https://{workspace}.cn-beijing.maas.aliyuncs.com
+  beijing   -> https://{workspace}.cn-beijing.maas.aliyuncs.com
   singapore -> https://{workspace}.ap-southeast-1.maas.aliyuncs.com
 
 Temporary upload policy:
-  beijing  -> https://dashscope.aliyuncs.com
+  beijing   -> https://dashscope.aliyuncs.com
   singapore -> https://dashscope-intl.aliyuncs.com
 ```
 
@@ -232,7 +232,7 @@ Pull-request CI:
 
 - receives no DashScope credentials;
 - compiles the provider and workflow code;
-- runs focused PR3–PR8 tests;
+- runs 71 focused PR3–PR8 tests;
 - mocks local PNG upload through task creation;
 - verifies exact Wan 2.7 upload and inference model matching;
 - verifies async task resumption without a second POST;
