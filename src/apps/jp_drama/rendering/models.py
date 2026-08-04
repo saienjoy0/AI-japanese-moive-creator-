@@ -1,4 +1,4 @@
-"""Execution-state contracts for the provider-free Japanese-drama renderer."""
+"""Execution-state contracts for resumable Japanese-drama rendering."""
 
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ RENDER_STATE_SCHEMA_VERSION = "1.0.0"
 
 
 class RenderExecutionModel(BaseModel):
-    """Strict base model for persisted PR6 execution state."""
-
     model_config = ConfigDict(
         extra="forbid",
         str_strip_whitespace=True,
@@ -35,6 +33,7 @@ class TaskExecutionState(RenderExecutionModel):
     output_files: list[str] = Field(default_factory=list)
     last_error: str | None = None
     reused: bool = False
+    external_api_calls: int = Field(default=0, ge=0)
 
 
 class ShotExecutionState(RenderExecutionModel):
@@ -51,13 +50,15 @@ class RenderRunState(RenderExecutionModel):
     project_id: str
     output_file: str
     graph_fingerprint: str
+    execution_profile: str = "mock:local-v1"
+    provider_manifest: dict[str, str] = Field(default_factory=lambda: {"mode": "mock"})
     task_order: list[str]
     final_shot_order: list[str]
     task_states: dict[str, TaskExecutionState]
     shot_states: dict[str, ShotExecutionState]
     persistence_status: str | None = None
     final_output_fingerprint: str | None = None
-    external_api_calls: Literal[0] = 0
+    external_api_calls: int = Field(default=0, ge=0)
 
     def to_canonical_json(self) -> str:
         return json.dumps(
@@ -82,7 +83,9 @@ class RenderValidationReport(RenderExecutionModel):
     shot_order: list[str]
     source_digest: str
     graph_fingerprint: str
-    external_api_calls: Literal[0] = 0
+    execution_profile: str = "mock:local-v1"
+    provider_manifest: dict[str, str] = Field(default_factory=lambda: {"mode": "mock"})
+    external_api_calls: int = Field(default=0, ge=0)
     valid: bool
     errors: list[str] = Field(default_factory=list)
 
