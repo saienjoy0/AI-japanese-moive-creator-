@@ -1,0 +1,138 @@
+name: Japanese Drama LumenX Persistence
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-lumenx-persistence.md"
+      - ".github/workflows/jp-drama-persistence.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-lumenx-persistence.md"
+      - ".github/workflows/jp-drama-persistence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-persistence-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  persist-offline:
+    name: Persist and verify LumenX project
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            "pydantic>=2,<3" "pytest>=8,<9" "pyyaml>=6,<7"
+      - name: Compile Japanese drama package
+        run: python -m compileall -q src/apps/jp_drama
+      - name: Run PR3, PR4, and PR5 tests
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_domain.py \
+            tests/test_jp_drama_example.py \
+            tests/test_jp_drama_preparation.py \
+            tests/test_jp_drama_persistence.py
+      - name: Prepare strict sample
+        run: |
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input examples/jp_drama/minimal_episode_package.json \
+            --output output/jp_drama/prepared \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --dry-run \
+            --strict
+      - name: Verify persistence dry-run writes no storage
+        run: |
+          python -m src.apps.jp_drama.workflows.save_prepared_episode \
+            --input output/jp_drama/prepared/prepared_episode.json \
+            --projects-file output/pr5/projects.json \
+            --index-file output/pr5/persistence_index.json \
+            --dry-run
+          test ! -e output/pr5/projects.json
+          test ! -e output/pr5/persistence_index.json
+      - name: Persist sample and repeat idempotently
+        run: |
+          python -m src.apps.jp_drama.workflows.save_prepared_episode \
+            --input output/jp_drama/prepared/prepared_episode.json \
+            --projects-file output/pr5/projects.json \
+            --index-file output/pr5/persistence_index.json \
+            --report output/pr5/created.json
+          cp output/pr5/projects.json output/pr5/projects.before.json
+          cp output/pr5/persistence_index.json output/pr5/index.before.json
+          python -m src.apps.jp_drama.workflows.save_prepared_episode \
+            --input output/jp_drama/prepared/prepared_episode.json \
+            --projects-file output/pr5/projects.json \
+            --index-file output/pr5/persistence_index.json \
+            --report output/pr5/unchanged.json
+          cmp output/pr5/projects.before.json output/pr5/projects.json
+          cmp output/pr5/index.before.json output/pr5/persistence_index.json
+      - name: Verify saved LumenX project
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from src.apps.comic_gen.models import Script
+
+          base = Path("output/pr5")
+          created = json.loads((base / "created.json").read_text())
+          unchanged = json.loads((base / "unchanged.json").read_text())
+          projects = json.loads((base / "projects.json").read_text())
+          project = Script.model_validate(projects[created["project_id"]])
+
+          assert created["status"] == "created"
+          assert unchanged["status"] == "unchanged"
+          assert created["external_api_calls"] == 0
+          assert unchanged["external_api_calls"] == 0
+          assert project.video_tasks == []
+          assert all(frame.video_url is None for frame in project.frames)
+          assert all(frame.audio_url is None for frame in project.frames)
+          assert all(frame.image_url is None for frame in project.frames)
+          PY
+      - name: Verify protected LumenX files are unchanged
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git diff --quiet "$BASE_SHA"...HEAD -- \
+            src/apps/comic_gen/models.py \
+            src/apps/comic_gen/pipeline.py \
+            src/apps/comic_gen/video.py \
+            src/apps/comic_gen/audio.py \
+            frontend; then
+            echo "PR5 must not change protected LumenX models, pipeline, media, or frontend."
+            git diff --stat "$BASE_SHA"...HEAD -- \
+              src/apps/comic_gen/models.py \
+              src/apps/comic_gen/pipeline.py \
+              src/apps/comic_gen/video.py \
+              src/apps/comic_gen/audio.py \
+              frontend
+            exit 1
+          fi
+      - name: Upload offline persistence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-lumenx-project
+          path: output/pr5/
+          retention-days: 7
