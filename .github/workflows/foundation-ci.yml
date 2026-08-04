@@ -31,13 +31,6 @@ jobs:
     name: Backend compile and health
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      PYTHONUTF8: "1"
-      PYTHONUNBUFFERED: "1"
-      APP_ENV: test
-      DISABLE_EXTERNAL_AI: "true"
-      NO_PROXY: "localhost,127.0.0.1"
-      no_proxy: "localhost,127.0.0.1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,41 +43,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-docker.txt
       - name: Compile backend sources
-        run: python -m compileall -q src
-      - name: Start FastAPI without provider credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p output/uploads output/video output/assets output/storyboard
-          mkdir -p output/audio output/export output/video_inputs output/outputs/videos
-          mkdir -p output/playground/images output/playground/videos
-          python -m uvicorn src.apps.comic_gen.api:app --host 127.0.0.1 --port 17177 > backend.log 2>&1 &
-          echo $! > backend.pid
-
-          ready=0
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:17177/health > health.json; then
-              ready=1
-              break
-            fi
-            sleep 2
-          done
-
-          if [ "$ready" -ne 1 ]; then
-            cat backend.log
-            exit 1
-          fi
-
-          curl --fail --silent http://127.0.0.1:17177/openapi.json > openapi.json
-          python scripts/validate_backend_smoke.py
-      - name: Stop backend and print diagnostics
-        if: always()
-        shell: bash
-        run: |
-          if [ -f backend.pid ]; then
-            kill "$(cat backend.pid)" 2>/dev/null || true
-          fi
-          tail -n 200 backend.log 2>/dev/null || true
+        run: python -m compileall -q src scripts
+      - name: Start and validate FastAPI
+        run: python scripts/backend_server_smoke.py
       - name: Upload backend diagnostics
         if: always()
         uses: actions/upload-artifact@v4
