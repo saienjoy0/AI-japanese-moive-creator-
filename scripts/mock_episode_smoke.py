@@ -162,9 +162,9 @@ def create_episode(output_dir: Path) -> Path:
 
     final_episode = output_dir / "mock_episode.mp4"
     subtitle_filter = (
-        "subtitles=captions.srt:force_style="
+        "subtitles=filename=captions.srt:force_style='"
         "FontName=Noto Sans CJK JP,FontSize=20,PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=48"
+        "OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=48'"
     )
     run(
         [
