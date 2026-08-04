@@ -1,5 +1,27 @@
 [
   {
+    "id": 30876891883,
+    "name": "Foundation CI",
+    "event": "push",
+    "status": "pending",
+    "conclusion": null,
+    "head_sha": "6510b12350a40510f469b2c223d6d3f99797554e",
+    "run_number": 14,
+    "created_at": "2026-08-04T04:10:42Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891883"
+  },
+  {
+    "id": 30876891872,
+    "name": "CI Trigger Probe",
+    "event": "push",
+    "status": "in_progress",
+    "conclusion": null,
+    "head_sha": "6510b12350a40510f469b2c223d6d3f99797554e",
+    "run_number": 11,
+    "created_at": "2026-08-04T04:10:42Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891872"
+  },
+  {
     "id": 30876786882,
     "name": "Foundation CI",
     "event": "push",
@@ -14,8 +36,8 @@
     "id": 30876786862,
     "name": "CI Trigger Probe",
     "event": "push",
-    "status": "in_progress",
-    "conclusion": null,
+    "status": "completed",
+    "conclusion": "success",
     "head_sha": "024ffc355226771b9016ca3387fb4e2ee425628e",
     "run_number": 10,
     "created_at": "2026-08-04T04:08:44Z",
@@ -196,27 +218,5 @@
     "run_number": 5,
     "created_at": "2026-08-04T03:52:48Z",
     "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875993867"
-  },
-  {
-    "id": 30875900874,
-    "name": ".github/workflows/foundation-ci.yml",
-    "event": "push",
-    "status": "completed",
-    "conclusion": "failure",
-    "head_sha": "6c930a034ca222473eca11212f51a6129125b1a3",
-    "run_number": 4,
-    "created_at": "2026-08-04T03:50:52Z",
-    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875900874"
-  },
-  {
-    "id": 30875901337,
-    "name": "CI Trigger Probe",
-    "event": "push",
-    "status": "completed",
-    "conclusion": "success",
-    "head_sha": "6c930a034ca222473eca11212f51a6129125b1a3",
-    "run_number": 1,
-    "created_at": "2026-08-04T03:50:52Z",
-    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875901337"
   }
 ]

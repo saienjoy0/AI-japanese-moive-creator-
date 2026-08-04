@@ -1,62 +1,10 @@
 [
   {
-    "id": 91889797249,
-    "name": "Model catalog",
-    "status": "completed",
-    "conclusion": "success",
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786882/job/91889797249",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 1
-    }
-  },
-  {
-    "id": 91889797202,
-    "name": "Offline Japanese MP4 smoke render",
-    "status": "in_progress",
-    "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786882/job/91889797202",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 0
-    }
-  },
-  {
-    "id": 91889797195,
-    "name": "Frontend typecheck, tests, and build",
-    "status": "in_progress",
-    "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786882/job/91889797195",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 0
-    }
-  },
-  {
-    "id": 91889797163,
-    "name": "Docker Compose config",
-    "status": "completed",
-    "conclusion": "success",
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786882/job/91889797163",
-    "output": {
-      "title": null,
-      "summary": null,
-      "text": null,
-      "annotations_count": 1
-    }
-  },
-  {
-    "id": 91889797071,
+    "id": 91890086305,
     "name": "probe",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876786862/job/91889797071",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876891872/job/91890086305",
     "output": {
       "title": null,
       "summary": null,
