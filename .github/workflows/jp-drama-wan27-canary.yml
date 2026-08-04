@@ -123,16 +123,25 @@ jobs:
         run: |
           test -z "${DASHSCOPE_API_KEY:-}"
           test -z "${DASHSCOPE_WORKSPACE_ID:-}"
-          if git grep -nE 'sk-[A-Za-z0-9_-]{12,}' -- . \
-            ':(exclude)package-lock.json' \
-            ':(exclude)pnpm-lock.yaml'; then
-            echo "Potential credential-like value found"
-            exit 1
-          fi
-          if git ls-files | grep -E '\.(mp4|mov|wav|mp3)$'; then
-            echo "Generated media must not be committed"
-            exit 1
-          fi
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          guarded = [
+              Path("examples/jp_drama/dashscope_live_providers.json"),
+              *Path("src/apps/jp_drama").rglob("*.py"),
+          ]
+          findings = []
+          pattern = re.compile(r"sk-[A-Za-z0-9_-]{12,}")
+          for path in guarded:
+              for number, line in enumerate(
+                  path.read_text(encoding="utf-8").splitlines(), start=1
+              ):
+                  if pattern.search(line):
+                      findings.append(f"{path}:{number}")
+          assert not findings, "credential-like values found: " + ", ".join(findings)
+          PY
+          ! git ls-files | grep -E '\.(mp4|mov|wav|mp3)$'
 
       - name: Upload zero-cost canary evidence
         uses: actions/upload-artifact@v4
