@@ -18,6 +18,7 @@ from .engine import (
 )
 from .execution_plan import (
     EXECUTION_PLAN_SCHEMA_VERSION,
+    DelegatedTaskPlan,
     ExecutionPlan,
     ExecutionTaskPlan,
     ProviderExecutionPlanner,
@@ -71,6 +72,7 @@ from .provider_registry import (
     ProviderRegistry,
     ProviderRegistryError,
     SeedancePlatformAdapter,
+    Wan27ImagePlanningAdapter,
     Wan27PlanningAdapter,
     build_default_provider_registry,
 )
@@ -91,6 +93,7 @@ __all__ = [
     "CanaryProviderLedgerStore",
     "CostEstimate",
     "DashScopeProviderConfig",
+    "DelegatedTaskPlan",
     "DialogueLine",
     "ExecutionPlan",
     "ExecutionTaskPlan",
@@ -134,6 +137,7 @@ __all__ = [
     "TaskExecutionState",
     "ValidationIssue",
     "ValidationReport",
+    "Wan27ImagePlanningAdapter",
     "Wan27LiveTaskExecutor",
     "Wan27PlanningAdapter",
     "build_default_provider_registry",
