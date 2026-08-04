@@ -93,9 +93,6 @@ class Wan27LiveTaskExecutor(LiveTaskExecutor):
         manifest["approved_keyframes"] = str(len(self.approved_keyframes))
         if self.api_call_limit is not None:
             manifest["api_call_limit"] = str(self.api_call_limit)
-        if self.ledger is not None:
-            manifest["committed_api_calls"] = str(self.ledger.committed_api_calls)
-            manifest["committed_cost_cny"] = str(self.ledger.committed_cost_cny)
         return manifest
 
     @staticmethod
