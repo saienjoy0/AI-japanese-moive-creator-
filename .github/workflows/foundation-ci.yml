@@ -1,15 +1,21 @@
 name: Foundation CI
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
+      - main
       - "feature/**"
+      - "fix/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: foundation-ci-${{ github.ref }}
+  group: foundation-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
