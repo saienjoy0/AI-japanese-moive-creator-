@@ -1,36 +1,47 @@
 [
   {
-    "id": 30876380033,
+    "id": 30876469124,
     "name": "CI Trigger Probe",
     "event": "push",
     "status": "in_progress",
     "conclusion": null,
-    "head_sha": "4dd399240cefd5c2edc81cee76c45db83fc9d8ed",
-    "run_number": 8,
-    "created_at": "2026-08-04T04:00:46Z",
-    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876380033"
+    "head_sha": "a74db3e33bda9624d3ec1bdcae1fdeeffb4d9f94",
+    "run_number": 9,
+    "created_at": "2026-08-04T04:02:32Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876469124"
+  },
+  {
+    "id": 30876469132,
+    "name": "Foundation CI",
+    "event": "push",
+    "status": "in_progress",
+    "conclusion": null,
+    "head_sha": "a74db3e33bda9624d3ec1bdcae1fdeeffb4d9f94",
+    "run_number": 12,
+    "created_at": "2026-08-04T04:02:32Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876469132"
   },
   {
     "id": 30876380032,
     "name": "Foundation CI",
     "event": "push",
-    "status": "in_progress",
-    "conclusion": null,
+    "status": "completed",
+    "conclusion": "success",
     "head_sha": "4dd399240cefd5c2edc81cee76c45db83fc9d8ed",
     "run_number": 11,
     "created_at": "2026-08-04T04:00:46Z",
     "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876380032"
   },
   {
-    "id": 30876370034,
-    "name": "Foundation CI",
+    "id": 30876380033,
+    "name": "CI Trigger Probe",
     "event": "push",
-    "status": "in_progress",
-    "conclusion": null,
-    "head_sha": "e4e5c96f7dbc671f34071112b159e68257a39dec",
-    "run_number": 10,
-    "created_at": "2026-08-04T04:00:35Z",
-    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876370034"
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "4dd399240cefd5c2edc81cee76c45db83fc9d8ed",
+    "run_number": 8,
+    "created_at": "2026-08-04T04:00:46Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876380033"
   },
   {
     "id": 30876369986,
@@ -42,6 +53,17 @@
     "run_number": 7,
     "created_at": "2026-08-04T04:00:35Z",
     "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876369986"
+  },
+  {
+    "id": 30876370034,
+    "name": "Foundation CI",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "e4e5c96f7dbc671f34071112b159e68257a39dec",
+    "run_number": 10,
+    "created_at": "2026-08-04T04:00:35Z",
+    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876370034"
   },
   {
     "id": 30876226029,
@@ -196,16 +218,5 @@
     "run_number": 2,
     "created_at": "2026-08-04T03:45:36Z",
     "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875669145"
-  },
-  {
-    "id": 30875611345,
-    "name": ".github/workflows/foundation-ci.yml",
-    "event": "push",
-    "status": "completed",
-    "conclusion": "failure",
-    "head_sha": "95fd255b21346b7ef6f19725556955bc21d44ec0",
-    "run_number": 1,
-    "created_at": "2026-08-04T03:44:23Z",
-    "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30875611345"
   }
 ]
