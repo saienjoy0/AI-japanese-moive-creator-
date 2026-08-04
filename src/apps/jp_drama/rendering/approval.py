@@ -16,6 +16,7 @@ from .ffmpeg import file_sha256
 
 
 APPROVAL_SCHEMA_VERSION = "1.0.0"
+MAX_PORTRAIT_RATIO_ERROR = 0.01
 
 
 class ApprovalError(RuntimeError):
@@ -70,6 +71,16 @@ def png_dimensions(path: str | Path) -> tuple[int, int]:
     return width, height
 
 
+def _validate_portrait_ratio(width: int, height: int) -> None:
+    actual = width / height
+    target = 9 / 16
+    relative_error = abs(actual - target) / target
+    if relative_error > MAX_PORTRAIT_RATIO_ERROR:
+        raise ApprovalError(
+            f"approved keyframe must be 9:16 portrait media, got {width}x{height}"
+        )
+
+
 def create_approval_manifest(
     *,
     shot_id: str,
@@ -82,10 +93,7 @@ def create_approval_manifest(
     if not asset.is_file() or asset.stat().st_size == 0:
         raise ApprovalError(f"approved keyframe does not exist or is empty: {asset}")
     width, height = png_dimensions(asset)
-    if width * 16 != height * 9:
-        raise ApprovalError(
-            f"approved keyframe must be exact 9:16 portrait media, got {width}x{height}"
-        )
+    _validate_portrait_ratio(width, height)
     manifest = ApprovedKeyframeManifest(
         shot_id=shot_id,
         asset_path=str(asset),
@@ -141,6 +149,7 @@ def load_and_verify_approval(
     if not asset.is_file() or asset.stat().st_size == 0:
         raise ApprovalError(f"approved keyframe is missing: {asset}")
     width, height = png_dimensions(asset)
+    _validate_portrait_ratio(width, height)
     if (width, height) != (manifest.width, manifest.height):
         raise ApprovalError("approved keyframe dimensions changed after approval")
     if file_sha256(asset) != manifest.asset_sha256:
