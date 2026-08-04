@@ -36,28 +36,28 @@ jobs:
         working-directory: frontend
     env:
       NEXT_PUBLIC_API_URL: http://127.0.0.1:17177
-      NPM_CONFIG_AUDIT: "false"
-      NPM_CONFIG_FUND: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.1 --activate
+          pnpm --version
       - name: Install frontend dependencies
         run: |
-          node --version
-          npm --version
-          timeout 15m npm install --no-audit --no-fund --prefer-offline
+          timeout 15m pnpm install --no-frozen-lockfile --ignore-scripts
           test -d node_modules/next-intl
-          npm ls --depth=0
+          pnpm list --depth=0
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
       - name: Unit tests
-        run: npm test
+        run: pnpm test
       - name: Production build
-        run: npm run build
+        run: pnpm run build
 
   offline-mock-episode:
     name: Offline Japanese MP4 smoke render
