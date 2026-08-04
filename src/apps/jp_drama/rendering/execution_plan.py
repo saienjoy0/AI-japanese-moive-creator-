@@ -1,4 +1,4 @@
-"""Immutable provider execution plans compiled from PreparedEpisode."""
+"""Immutable visual-provider execution plans compiled from PreparedEpisode."""
 
 from __future__ import annotations
 
@@ -24,6 +24,19 @@ from .provider_registry import ProviderRegistry
 
 EXECUTION_PLAN_SCHEMA_VERSION = "1.0.0"
 RoutingMode = Literal["pinned", "ordered_fallback"]
+PlanScope = Literal["visual_generation"]
+
+_VISUAL_TASK_TYPES = {
+    "generate_image",
+    "generate_video",
+    "generate_native_av",
+}
+_DELEGATED_EXECUTORS = {
+    "generate_tts": (
+        "existing/qwen3-tts",
+        "TTS remains on the proven PR8 execution path.",
+    ),
+}
 
 
 class ProviderPlanningError(ProviderCoreError):
@@ -35,7 +48,7 @@ class ProviderProfile(ProviderCoreModel):
     routing_mode: RoutingMode = "pinned"
     route_priority: list[str] = Field(min_length=1)
     route_by_shot: dict[str, str] = Field(default_factory=dict)
-    fallback_requires_approval: bool = True
+    fallback_requires_approval: Literal[True] = True
     max_cost_cny: Decimal | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
@@ -55,25 +68,47 @@ class ExecutionTaskPlan(ProviderCoreModel):
     generation_spec: ShotGenerationSpec
     estimated_cost: CostEstimate
     fallback_route_id: str | None = None
-    fallback_requires_approval: bool = True
+    fallback_requires_approval: Literal[True] = True
+
+
+class DelegatedTaskPlan(ProviderCoreModel):
+    task_id: str
+    shot_id: str
+    task_type: str
+    delegated_executor: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
 
 
 class ExecutionPlan(ProviderCoreModel):
     schema_version: Literal[EXECUTION_PLAN_SCHEMA_VERSION] = EXECUTION_PLAN_SCHEMA_VERSION
+    plan_scope: PlanScope = "visual_generation"
     source_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     profile_id: str
     routing_mode: RoutingMode
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     tasks: dict[str, ExecutionTaskPlan] = Field(min_length=1)
+    delegated_tasks: list[DelegatedTaskPlan] = Field(default_factory=list)
     estimated_total_cny: Decimal | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_task_map(self) -> "ExecutionPlan":
+        visual_task_ids = set(self.tasks)
         for key, item in self.tasks.items():
             if key != item.task_id:
                 raise ValueError("execution task key must match task_id")
             if item.generation_spec.source_digest != self.source_digest:
                 raise ValueError("all execution tasks must use the plan source_digest")
+            if not item.fallback_requires_approval:
+                raise ValueError("provider fallback must always require approval")
+
+        delegated_ids = [item.task_id for item in self.delegated_tasks]
+        if len(delegated_ids) != len(set(delegated_ids)):
+            raise ValueError("delegated task IDs must be unique")
+        overlap = visual_task_ids.intersection(delegated_ids)
+        if overlap:
+            raise ValueError(
+                f"tasks cannot be both visual and delegated: {sorted(overlap)}"
+            )
         return self
 
     def to_canonical_json(self, *, indent: int | None = 2) -> str:
@@ -112,16 +147,17 @@ class ProviderExecutionPlanner:
             for frame in prepared.storyboard_frame_drafts
         }
         tasks: dict[str, ExecutionTaskPlan] = {}
+        delegated_tasks: list[DelegatedTaskPlan] = []
         total_cny = Decimal("0")
         all_costs_cny = True
 
         for node in prepared.render_graph.nodes:
-            if not node.external_api_required or node.task_type not in {
-                "generate_image",
-                "generate_video",
-                "generate_native_av",
-            }:
+            if not node.external_api_required:
                 continue
+            if node.task_type not in _VISUAL_TASK_TYPES:
+                delegated_tasks.append(_delegate_task(node))
+                continue
+
             frame = frames[node.shot_id]
             spec = _build_generation_spec(prepared, frame, node)
             route_id, fallback_route_id = self._select_route(profile, spec)
@@ -145,7 +181,7 @@ class ProviderExecutionPlanner:
                 generation_spec=spec,
                 estimated_cost=estimate,
                 fallback_route_id=fallback_route_id,
-                fallback_requires_approval=profile.fallback_requires_approval,
+                fallback_requires_approval=True,
             )
 
         estimated_total_cny = total_cny if all_costs_cny else None
@@ -166,6 +202,7 @@ class ProviderExecutionPlanner:
             profile_id=profile.profile_id,
             routing_mode=profile.routing_mode,
             tasks=tasks,
+            delegated_tasks=delegated_tasks,
             estimated_total_cny=estimated_total_cny,
         )
 
@@ -198,6 +235,23 @@ class ProviderExecutionPlanner:
             return compatible[0], None
         fallback = compatible[1] if len(compatible) > 1 else None
         return compatible[0], fallback
+
+
+def _delegate_task(node: RenderTaskNode) -> DelegatedTaskPlan:
+    executor, reason = _DELEGATED_EXECUTORS.get(
+        node.task_type,
+        (
+            "existing/render-graph-executor",
+            "This external task remains delegated until a dedicated provider route is added.",
+        ),
+    )
+    return DelegatedTaskPlan(
+        task_id=node.task_id,
+        shot_id=node.shot_id,
+        task_type=node.task_type,
+        delegated_executor=executor,
+        reason=reason,
+    )
 
 
 def _build_generation_spec(
