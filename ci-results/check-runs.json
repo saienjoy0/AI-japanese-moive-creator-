@@ -1,10 +1,23 @@
 [
   {
-    "id": 91887799461,
+    "id": 91888010381,
     "name": "probe",
     "status": "in_progress",
     "conclusion": null,
-    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876112691/job/91887799461",
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185720/job/91888010381",
+    "output": {
+      "title": null,
+      "summary": null,
+      "text": null,
+      "annotations_count": 0
+    }
+  },
+  {
+    "id": 91888010210,
+    "name": "Model catalog",
+    "status": "in_progress",
+    "conclusion": null,
+    "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185714/job/91888010210",
     "output": {
       "title": null,
       "summary": null,

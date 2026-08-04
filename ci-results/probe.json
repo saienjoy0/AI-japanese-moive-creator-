@@ -1,13 +1,35 @@
 {
-  "probe_run_id": 30876112691,
-  "source_sha": "5ca0ef01779bffae16c9855bb093cebba7953843",
+  "probe_run_id": 30876185720,
+  "source_sha": "85fb90da2daa1391c6dffefaa599036647a5f2bd",
   "runs": [
     {
-      "id": 30876112691,
+      "id": 30876185714,
+      "name": "Foundation CI",
+      "event": "push",
+      "status": "in_progress",
+      "conclusion": null,
+      "head_sha": "85fb90da2daa1391c6dffefaa599036647a5f2bd",
+      "run_number": 8,
+      "created_at": "2026-08-04T03:56:46Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185714"
+    },
+    {
+      "id": 30876185720,
       "name": "CI Trigger Probe",
       "event": "push",
       "status": "in_progress",
       "conclusion": null,
+      "head_sha": "85fb90da2daa1391c6dffefaa599036647a5f2bd",
+      "run_number": 5,
+      "created_at": "2026-08-04T03:56:46Z",
+      "html_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185720"
+    },
+    {
+      "id": 30876112691,
+      "name": "CI Trigger Probe",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
       "head_sha": "5ca0ef01779bffae16c9855bb093cebba7953843",
       "run_number": 4,
       "created_at": "2026-08-04T03:55:13Z",
@@ -126,11 +148,24 @@
   ],
   "checks": [
     {
-      "id": 91887799461,
+      "id": 91888010381,
       "name": "probe",
       "status": "in_progress",
       "conclusion": null,
-      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876112691/job/91887799461",
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185720/job/91888010381",
+      "output": {
+        "title": null,
+        "summary": null,
+        "text": null,
+        "annotations_count": 0
+      }
+    },
+    {
+      "id": 91888010210,
+      "name": "Model catalog",
+      "status": "in_progress",
+      "conclusion": null,
+      "details_url": "https://github.com/saienjoy0/AI-japanese-moive-creator-/actions/runs/30876185714/job/91888010210",
       "output": {
         "title": null,
         "summary": null,
