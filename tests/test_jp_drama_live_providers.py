@@ -57,16 +57,8 @@ class FakeImageModel:
     def generate(self, prompt: str, output_path: str, **kwargs: object) -> tuple[str, float]:
         self.calls.append({"prompt": prompt, **kwargs})
         ffmpeg(
-            "-f",
-            "lavfi",
-            "-i",
-            "color=c=0x35506f:s=540x960:d=0.04",
-            "-frames:v",
-            "1",
-            "-update",
-            "1",
-            "-y",
-            output_path,
+            "-f", "lavfi", "-i", "color=c=0x35506f:s=540x960:d=0.04",
+            "-frames:v", "1", "-update", "1", "-y", output_path,
         )
         return output_path, 0.0
 
@@ -78,20 +70,9 @@ class FakeVideoModel:
     def generate(self, prompt: str, output_path: str, **kwargs: object) -> tuple[str, float]:
         self.calls.append({"prompt": prompt, **kwargs})
         ffmpeg(
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc2=size=540x960:rate=30:duration=0.35",
-            "-t",
-            "0.35",
-            "-an",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p",
-            output_path,
+            "-f", "lavfi", "-i", "testsrc2=size=540x960:rate=30:duration=0.35",
+            "-t", "0.35", "-an", "-c:v", "libx264", "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p", output_path,
         )
         return output_path, 0.0
 
@@ -103,15 +84,8 @@ class FakeTTSProcessor:
     def synthesize(self, text: str, output_path: str, **kwargs: object) -> tuple[str, float, str]:
         self.calls.append({"text": text, **kwargs})
         ffmpeg(
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:sample_rate=48000:duration=0.30",
-            "-c:a",
-            "libmp3lame",
-            "-b:a",
-            "96k",
-            output_path,
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=0.30",
+            "-c:a", "libmp3lame", "-b:a", "96k", output_path,
         )
         return output_path, 0.0, f"fake-{len(self.calls)}"
 
@@ -166,8 +140,8 @@ def test_live_executor_runs_full_graph_with_injected_provider_clients(
     second = runner.run()
 
     assert report.valid is True
-    assert report.execution_profile == config.execution_profile
-    assert report.provider_manifest == config.provider_manifest
+    assert report.execution_profile == executor.execution_profile
+    assert report.provider_manifest == executor.provider_manifest
     assert report.external_api_calls == 9
     assert second.external_api_calls == 9
     assert runner.state_file.read_bytes() == state_before
@@ -175,7 +149,7 @@ def test_live_executor_runs_full_graph_with_injected_provider_clients(
     assert len(videos.calls) == 3
     assert len(voices.calls) == 3
     assert all(call["model_name"] == config.dashscope.image_model for call in images.calls)
-    assert all(call["ratio"] == "9:16" for call in videos.calls)
+    assert all(call["resolution"] == "720P" for call in videos.calls)
     assert {call["voice"] for call in voices.calls} == {"Ono Anna"}
 
     state = json.loads(runner.state_file.read_text(encoding="utf-8"))
@@ -226,12 +200,9 @@ def test_live_preflight_makes_no_provider_calls(
 
     exit_code = render_main(
         [
-            "--input",
-            str(prepared_path),
-            "--output",
-            str(output),
-            "--providers",
-            str(PROVIDER_PATH),
+            "--input", str(prepared_path),
+            "--output", str(output),
+            "--providers", str(PROVIDER_PATH),
             "--preflight",
         ]
     )
@@ -239,3 +210,25 @@ def test_live_preflight_makes_no_provider_calls(
     assert exit_code == 0
     assert output.exists() is False
     assert (tmp_path / ".episode_work").exists() is False
+
+
+def test_full_live_render_is_blocked_without_explicit_call_budget(
+    prepared: PreparedEpisode,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared_path = tmp_path / "prepared.json"
+    prepared_path.write_text(prepared.to_canonical_json(), encoding="utf-8")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "not-used")
+    monkeypatch.setenv("DASHSCOPE_WORKSPACE_ID", "not-used")
+
+    exit_code = render_main(
+        [
+            "--input", str(prepared_path),
+            "--output", str(tmp_path / "episode.mp4"),
+            "--providers", str(PROVIDER_PATH),
+        ]
+    )
+
+    assert exit_code == 6
+    assert (tmp_path / "episode.mp4").exists() is False
