@@ -1,0 +1,48 @@
+name: Japanese Drama Domain
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-domain-models.md"
+      - ".github/workflows/jp-drama-domain.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-domain-models.md"
+      - ".github/workflows/jp-drama-domain.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-domain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-domain:
+    name: Validate domain contracts and example
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused test dependencies
+        run: python -m pip install --disable-pip-version-check "pydantic>=2,<3" "pytest>=8,<9"
+      - name: Compile Japanese drama package
+        run: python -m compileall -q src/apps/jp_drama
+      - name: Run domain and example tests
+        run: python -m pytest -q tests/test_jp_drama_domain.py tests/test_jp_drama_example.py
