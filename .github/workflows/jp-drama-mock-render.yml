@@ -1,0 +1,156 @@
+name: Japanese Drama Mock Render
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-mock-render-pipeline.md"
+      - ".github/workflows/jp-drama-mock-render.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/**"
+      - "tests/test_jp_drama_*.py"
+      - "examples/jp_drama/**"
+      - "docs/jp-drama-mock-render-pipeline.md"
+      - ".github/workflows/jp-drama-mock-render.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-mock-render-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-offline:
+    name: Render and inspect provider-free MP4
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg, Japanese fonts, and focused Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+          python -m pip install --disable-pip-version-check \
+            "pydantic>=2,<3" "pytest>=8,<9" "pyyaml>=6,<7"
+
+      - name: Compile Japanese drama package
+        run: python -m compileall -q src/apps/jp_drama
+
+      - name: Run PR3 through PR6 focused tests
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_domain.py \
+            tests/test_jp_drama_example.py \
+            tests/test_jp_drama_preparation.py \
+            tests/test_jp_drama_persistence.py \
+            tests/test_jp_drama_mock_render.py
+
+      - name: Prepare strict 45-second sample
+        run: |
+          rm -rf output/jp_drama
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input examples/jp_drama/minimal_episode_package.json \
+            --output output/jp_drama/prepared \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --dry-run \
+            --strict
+
+      - name: Render with the PR6 completion command
+        run: |
+          python -m src.apps.jp_drama.workflows.render_mock_episode \
+            --input output/jp_drama/prepared/prepared_episode.json \
+            --output output/jp_drama/mock_episode.mp4
+
+      - name: Verify state, order, subtitles, audio, duration, and no API calls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          base = Path("output/jp_drama")
+          work = base / ".mock_episode_work"
+          state = json.loads((work / "render_state.json").read_text(encoding="utf-8"))
+          report = json.loads((work / "validation_report.json").read_text(encoding="utf-8"))
+          projects = json.loads((work / "lumenx" / "projects.json").read_text(encoding="utf-8"))
+          index = json.loads((work / "lumenx" / "persistence_index.json").read_text(encoding="utf-8"))
+
+          assert report["valid"] is True
+          assert report["aspect_ratio"] == "9:16"
+          assert report["width"] * 16 == report["height"] * 9
+          assert 44.25 <= report["duration_seconds"] <= 45.75
+          assert abs(report["fps"] - 30.0) <= 0.1
+          assert report["video_streams"] >= 1
+          assert report["audio_streams"] >= 1
+          assert report["subtitle_artifacts"] == 3
+          assert report["black_duration_seconds"] < report["duration_seconds"] * 0.80
+          assert report["shot_order"] == ["shot_01", "shot_02", "shot_03"]
+          assert report["external_api_calls"] == 0
+          assert state["external_api_calls"] == 0
+          assert state["persistence_status"] in {"created", "unchanged"}
+          assert all(task["status"] == "succeeded" for task in state["task_states"].values())
+          assert all(shot["status"] == "succeeded" for shot in state["shot_states"].values())
+          assert state["project_id"] in projects
+          assert state["project_id"] in index["projects"]
+          PY
+
+      - name: Verify identical input reuses every task and final MP4
+        run: |
+          cp output/jp_drama/mock_episode.mp4 output/jp_drama/mock_episode.before.mp4
+          cp output/jp_drama/.mock_episode_work/render_state.json \
+            output/jp_drama/render_state.before.json
+          python -m src.apps.jp_drama.workflows.render_mock_episode \
+            --input output/jp_drama/prepared/prepared_episode.json \
+            --output output/jp_drama/mock_episode.mp4
+          cmp output/jp_drama/mock_episode.before.mp4 output/jp_drama/mock_episode.mp4
+          cmp output/jp_drama/render_state.before.json \
+            output/jp_drama/.mock_episode_work/render_state.json
+
+      - name: Verify protected LumenX and frontend files are unchanged
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if ! git diff --quiet "$BASE_SHA"...HEAD -- \
+            src/apps/comic_gen/models.py \
+            src/apps/comic_gen/pipeline.py \
+            src/apps/comic_gen/video.py \
+            src/apps/comic_gen/audio.py \
+            frontend; then
+            echo "PR6 must not change protected LumenX core media files or frontend."
+            git diff --stat "$BASE_SHA"...HEAD -- \
+              src/apps/comic_gen/models.py \
+              src/apps/comic_gen/pipeline.py \
+              src/apps/comic_gen/video.py \
+              src/apps/comic_gen/audio.py \
+              frontend
+            exit 1
+          fi
+
+      - name: Upload generated MP4 and execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-mock-episode
+          path: |
+            output/jp_drama/mock_episode.mp4
+            output/jp_drama/.mock_episode_work/render_state.json
+            output/jp_drama/.mock_episode_work/validation_report.json
+            output/jp_drama/.mock_episode_work/lumenx/
+          retention-days: 7
