@@ -241,6 +241,19 @@ Pull-request CI:
 - runs preflight with zero provider calls;
 - uploads only zero-cost JSON/config evidence.
 
+## Final validation
+
+Final head: `7625756c03d67dd4f564643b25ea35640c5131f5`
+
+- Japanese Drama Wan 2.7 Canary: run `30911724244`
+- Japanese Drama Live Providers: run `30911724042`
+- Japanese Drama Mock Render: run `30911724040`
+- Japanese Drama Domain: run `30911724095`
+- Japanese Drama Preparation: run `30911724912`
+- Japanese Drama LumenX Persistence: run `30911724026`
+- Foundation CI: run `30911724044`
+- external paid provider calls: `0`
+
 ## Remaining boundary
 
 PR8 does not claim:
