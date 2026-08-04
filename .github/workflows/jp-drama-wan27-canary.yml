@@ -78,9 +78,9 @@ jobs:
             --dry-run \
             --strict
 
-      - name: Run one-shot canary preflight without credentials
+      - name: Run native-duration canary preflight without credentials
         run: |
-          unset DASHSCOPE_API_KEY DASHSCOPE_WORKSPACE_ID DASHSCOPE_BASE_URL
+          unset DASHSCOPE_API_KEY DASHSCOPE_WORKSPACE_ID DASHSCOPE_BASE_URL DASHSCOPE_UPLOAD_BASE_URL
           python -m src.apps.jp_drama.workflows.render_canary_episode \
             --input output/jp_drama/prepared/prepared_episode.json \
             --output output/jp_drama/canary_shot_01.mp4 \
@@ -88,35 +88,58 @@ jobs:
             --shot-id shot_01 \
             --stage preflight \
             --max-api-calls 3 \
+            --max-cost-cny 5 \
             --print-report \
             --report output/jp_drama/wan27_canary_preflight.json
           test ! -e output/jp_drama/canary_shot_01.mp4
           test ! -e output/jp_drama/.canary_shot_01_shot_01_canary_work
+          test -e output/jp_drama/.canary_shot_01_shot_01_provider_ledger.json
 
-      - name: Verify canary cost and approval contract
+      - name: Verify persistent budget and approval contract
         run: |
           python - <<'PY'
           import json
+          from decimal import Decimal
           from pathlib import Path
 
           report = json.loads(
               Path("output/jp_drama/wan27_canary_preflight.json").read_text(encoding="utf-8")
           )
           assert report["valid"] is True
+          assert report["stage"] == "preflight"
           assert report["shot_id"] == "shot_01"
+          assert report["target_duration_seconds"] == 5
           assert report["keyframe_calls"] == 1
-          assert report["render_calls_without_approved_keyframe"] == 3
-          assert report["render_calls_with_approved_keyframe"] == 2
+          assert report["render_calls_after_approval"] == 2
           assert report["max_api_calls"] == 3
+          assert Decimal(report["max_cost_cny"]) == Decimal("5")
+          assert Decimal(report["keyframe_estimated_cost_cny"]) > 0
+          assert Decimal(report["render_estimated_cost_cny"]) > 0
+          assert Decimal(report["cumulative_estimated_cost_cny"]) <= Decimal("5")
+          assert report["committed_api_calls"] == 0
+          assert Decimal(report["committed_cost_cny"]) == Decimal("0")
           assert report["external_api_calls"] == 0
           assert set(report["missing_environment"]) == {
               "DASHSCOPE_API_KEY",
               "DASHSCOPE_WORKSPACE_ID",
           }
+
+          ledger = json.loads(
+              Path(report["ledger_file"]).read_text(encoding="utf-8")
+          )
+          assert ledger["schema_version"] == "1.0.0"
+          assert ledger["shot_id"] == "shot_01"
+          assert ledger["max_api_calls"] == 3
+          assert Decimal(ledger["max_cost_cny"]) == Decimal("5")
+          assert ledger["operations"] == {}
+
           manifest = report["provider_manifest"]
           assert manifest["region"] == "singapore"
           assert manifest["image_size"] == "960*1696"
           assert manifest["video_resolution"] == "720P"
+          assert manifest["upload_base_url_env"] == "DASHSCOPE_UPLOAD_BASE_URL"
+          assert manifest["tts_instructions_enabled"] == "false"
+          assert manifest["price_snapshot_date"] == "2026-08-04"
           PY
 
       - name: Verify no paid credential or generated media is committed
@@ -149,6 +172,7 @@ jobs:
           name: jp-drama-wan27-canary-contract
           path: |
             output/jp_drama/wan27_canary_preflight.json
+            output/jp_drama/.canary_shot_01_shot_01_provider_ledger.json
             examples/jp_drama/dashscope_live_providers.json
           if-no-files-found: error
           retention-days: 7
