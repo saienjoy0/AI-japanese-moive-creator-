@@ -23,6 +23,7 @@ from .provider_registry import ProviderRegistry
 
 
 EXECUTION_PLAN_SCHEMA_VERSION = "1.0.0"
+RoutingMode = Literal["pinned", "ordered_fallback"]
 
 
 class ProviderPlanningError(ProviderCoreError):
@@ -31,7 +32,7 @@ class ProviderPlanningError(ProviderCoreError):
 
 class ProviderProfile(ProviderCoreModel):
     profile_id: str = Field(min_length=1)
-    routing_mode: Literal["pinned", "ordered_fallback", "benchmark"] = "pinned"
+    routing_mode: RoutingMode = "pinned"
     route_priority: list[str] = Field(min_length=1)
     route_by_shot: dict[str, str] = Field(default_factory=dict)
     fallback_requires_approval: bool = True
@@ -61,9 +62,9 @@ class ExecutionPlan(ProviderCoreModel):
     schema_version: Literal[EXECUTION_PLAN_SCHEMA_VERSION] = EXECUTION_PLAN_SCHEMA_VERSION
     source_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     profile_id: str
-    routing_mode: Literal["pinned", "ordered_fallback", "benchmark"]
+    routing_mode: RoutingMode
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    tasks: dict[str, ExecutionTaskPlan]
+    tasks: dict[str, ExecutionTaskPlan] = Field(min_length=1)
     estimated_total_cny: Decimal | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
@@ -148,15 +149,17 @@ class ProviderExecutionPlanner:
             )
 
         estimated_total_cny = total_cny if all_costs_cny else None
-        if (
-            profile.max_cost_cny is not None
-            and estimated_total_cny is not None
-            and estimated_total_cny > profile.max_cost_cny
-        ):
-            raise ProviderPlanningError(
-                f"execution plan cost {estimated_total_cny} CNY exceeds "
-                f"profile limit {profile.max_cost_cny} CNY"
-            )
+        if profile.max_cost_cny is not None:
+            if estimated_total_cny is None:
+                raise ProviderPlanningError(
+                    "cannot enforce max_cost_cny because at least one selected route "
+                    "has unknown or non-CNY pricing"
+                )
+            if estimated_total_cny > profile.max_cost_cny:
+                raise ProviderPlanningError(
+                    f"execution plan cost {estimated_total_cny} CNY exceeds "
+                    f"profile limit {profile.max_cost_cny} CNY"
+                )
 
         return ExecutionPlan(
             source_digest=prepared.source_digest,
@@ -212,14 +215,10 @@ def _build_generation_spec(
 
     required = ProviderCapabilitiesRequired(
         modality=modality,
-        text_to_video=modality == "video",
-        image_to_video=False,
+        text_to_video=node.task_type == "generate_native_av",
+        image_to_video=node.task_type == "generate_video",
         native_audio=audio_strategy == "native_av",
     )
-    if node.task_type == "generate_video":
-        # The existing PR8 Wan path generates or reuses a keyframe before I2V.
-        required.text_to_video = False
-        required.image_to_video = True
 
     camera = frame.camera
     prompt_parts = [
