@@ -175,7 +175,7 @@ jobs:
 
   temporary-run-report:
     name: Temporary run report
-    if: always() && github.event_name == 'push' && github.ref_name == 'feature/ci-foundation-smoke-tests'
+    if: ${{ always() && github.event_name == 'push' && github.ref_name == 'feature/ci-foundation-smoke-tests' }}
     needs: [model-catalog, backend, frontend, offline-mock-episode, docker-config]
     runs-on: ubuntu-latest
     steps:
@@ -187,11 +187,11 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           SOURCE_SHA: ${{ github.sha }}
-          MODEL_CATALOG_RESULT: ${{ needs.model-catalog.result }}
+          MODEL_CATALOG_RESULT: ${{ needs['model-catalog'].result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
-          MOCK_EPISODE_RESULT: ${{ needs.offline-mock-episode.result }}
-          DOCKER_RESULT: ${{ needs.docker-config.result }}
+          MOCK_EPISODE_RESULT: ${{ needs['offline-mock-episode'].result }}
+          DOCKER_RESULT: ${{ needs['docker-config'].result }}
         run: |
           mkdir -p ci-results
           python - <<'PY'
