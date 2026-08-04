@@ -1,4 +1,4 @@
-"""Provider-free, resumable rendering for Japanese short dramas."""
+"""Resumable mock and live rendering for Japanese short dramas."""
 
 from .engine import (
     RenderExecutionError,
@@ -7,6 +7,7 @@ from .engine import (
     RenderTaskFailedError,
     RenderValidationError,
 )
+from .live_tasks import LiveTaskExecutor
 from .mock_tasks import MockTaskExecutor, TaskContext
 from .models import (
     RENDER_STATE_SCHEMA_VERSION,
@@ -15,10 +16,21 @@ from .models import (
     ShotExecutionState,
     TaskExecutionState,
 )
+from .provider_config import (
+    LIVE_PROVIDER_SCHEMA_VERSION,
+    DashScopeProviderConfig,
+    LiveProviderConfig,
+    ProviderConfigurationError,
+)
 
 __all__ = [
+    "LIVE_PROVIDER_SCHEMA_VERSION",
     "RENDER_STATE_SCHEMA_VERSION",
+    "DashScopeProviderConfig",
+    "LiveProviderConfig",
+    "LiveTaskExecutor",
     "MockTaskExecutor",
+    "ProviderConfigurationError",
     "RenderExecutionError",
     "RenderGraphRunner",
     "RenderRunState",
