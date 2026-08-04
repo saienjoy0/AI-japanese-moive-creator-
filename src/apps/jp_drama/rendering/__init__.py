@@ -1,5 +1,12 @@
 """Resumable mock and live rendering for Japanese short dramas."""
 
+from .approval import (
+    APPROVAL_SCHEMA_VERSION,
+    ApprovalError,
+    ApprovedKeyframeManifest,
+    create_approval_manifest,
+    load_and_verify_approval,
+)
 from .canary import select_canary_shot
 from .canary_tasks import ProviderCallLimitError, Wan27LiveTaskExecutor
 from .engine import (
@@ -24,13 +31,26 @@ from .provider_config import (
     LiveProviderConfig,
     ProviderConfigurationError,
 )
+from .provider_ledger import (
+    CANARY_LEDGER_SCHEMA_VERSION,
+    CanaryProviderLedger,
+    CanaryProviderLedgerStore,
+    ProviderLedgerError,
+    ProviderOperationRecord,
+)
 
 # PR8 makes the official Wan 2.7 compatibility executor the public live path.
 LiveTaskExecutor = Wan27LiveTaskExecutor
 
 __all__ = [
+    "APPROVAL_SCHEMA_VERSION",
+    "CANARY_LEDGER_SCHEMA_VERSION",
     "LIVE_PROVIDER_SCHEMA_VERSION",
     "RENDER_STATE_SCHEMA_VERSION",
+    "ApprovalError",
+    "ApprovedKeyframeManifest",
+    "CanaryProviderLedger",
+    "CanaryProviderLedgerStore",
     "DashScopeProviderConfig",
     "LegacyLiveTaskExecutor",
     "LiveProviderConfig",
@@ -38,6 +58,8 @@ __all__ = [
     "MockTaskExecutor",
     "ProviderCallLimitError",
     "ProviderConfigurationError",
+    "ProviderLedgerError",
+    "ProviderOperationRecord",
     "RenderExecutionError",
     "RenderGraphRunner",
     "RenderRunState",
@@ -49,5 +71,7 @@ __all__ = [
     "TaskContext",
     "TaskExecutionState",
     "Wan27LiveTaskExecutor",
+    "create_approval_manifest",
+    "load_and_verify_approval",
     "select_canary_shot",
 ]
