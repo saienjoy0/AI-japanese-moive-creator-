@@ -1,0 +1,41 @@
+{
+  "catalog_version": "1.0.0",
+  "profiles": [
+    {
+      "provider": "provider-a",
+      "model": "model-v1",
+      "supported_strategies": ["video_plus_tts", "still_motion"],
+      "capabilities": ["video_generation", "tts", "image_generation", "still_motion"],
+      "fallback_costs": [
+        {
+          "strategy": "video_plus_tts",
+          "estimated_primary_cost": 400,
+          "reserved_retry_cost": 150
+        },
+        {
+          "strategy": "still_motion",
+          "estimated_primary_cost": 250,
+          "reserved_retry_cost": 100
+        }
+      ]
+    },
+    {
+      "provider": "provider-b",
+      "model": "model-av",
+      "supported_strategies": ["native_av", "video_plus_tts"],
+      "capabilities": ["native_av", "exact_dialogue", "video_generation", "tts"],
+      "fallback_costs": [
+        {
+          "strategy": "native_av",
+          "estimated_primary_cost": 700,
+          "reserved_retry_cost": 250
+        },
+        {
+          "strategy": "video_plus_tts",
+          "estimated_primary_cost": 600,
+          "reserved_retry_cost": 200
+        }
+      ]
+    }
+  ]
+}
