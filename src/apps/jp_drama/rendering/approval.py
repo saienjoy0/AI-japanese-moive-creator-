@@ -33,7 +33,7 @@ class ApprovedKeyframeManifest(BaseModel):
     schema_version: Literal[APPROVAL_SCHEMA_VERSION] = APPROVAL_SCHEMA_VERSION
     shot_id: str = Field(min_length=1)
     asset_path: str = Field(min_length=1)
-    asset_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    asset_sha256: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     width: int = Field(gt=0)
     height: int = Field(gt=0)
     mime_type: Literal["image/png"] = "image/png"
