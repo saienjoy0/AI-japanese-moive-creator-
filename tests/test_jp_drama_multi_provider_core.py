@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from src.apps.jp_drama import EpisodePackage
 from src.apps.jp_drama.preparation import compile_episode
 from src.apps.jp_drama.preparation.compiler import load_model_catalog
 from src.apps.jp_drama.rendering import (
+    CostEstimate,
     DialogueLine,
     LiveProviderConfig,
     MockProviderAdapter,
@@ -49,6 +51,8 @@ def _video_spec(
     audio_strategy: str = "native_av",
     duration_seconds: float = 10,
     references: list[ReferenceAsset] | None = None,
+    text_to_video: bool = True,
+    image_to_video: bool = False,
 ) -> ShotGenerationSpec:
     return ShotGenerationSpec(
         source_digest="sha256:" + ("a" * 64),
@@ -70,7 +74,8 @@ def _video_spec(
         audio_strategy=audio_strategy,
         required_capabilities=ProviderCapabilitiesRequired(
             modality="video",
-            text_to_video=True,
+            text_to_video=text_to_video,
+            image_to_video=image_to_video,
             native_audio=audio_strategy == "native_av",
             driving_audio=audio_strategy == "driving_audio",
         ),
@@ -149,18 +154,18 @@ def test_wan_planning_adapter_reuses_pr8_costs_and_blocks_unmigrated_audio() -> 
     config = LiveProviderConfig.load(PROVIDER_PATH)
     adapter = Wan27PlanningAdapter(config)
 
-    native = _video_spec()
-    native.required_capabilities.text_to_video = False
-    native.required_capabilities.image_to_video = True
+    native = _video_spec(text_to_video=False, image_to_video=True)
     report = adapter.validate(native)
     assert report.valid is False
     assert "wan_i2v_audio_strategy_not_migrated" in {
         item.code for item in report.errors
     }
 
-    external = _video_spec(audio_strategy="external_audio_post")
-    external.required_capabilities.text_to_video = False
-    external.required_capabilities.image_to_video = True
+    external = _video_spec(
+        audio_strategy="external_audio_post",
+        text_to_video=False,
+        image_to_video=True,
+    )
     report = adapter.validate(external)
     assert report.valid is True
     estimate = adapter.estimate_cost(external)
@@ -198,6 +203,32 @@ def test_planner_compiles_prepared_episode_without_changing_it() -> None:
 
     restored = type(plan).model_validate_json(plan.to_canonical_json())
     assert restored.execution_plan_digest == plan.execution_plan_digest
+    with pytest.raises(ValidationError, match="frozen"):
+        plan.profile_id = "changed"
+    first_task = next(iter(plan.tasks.values()))
+    with pytest.raises(ValidationError, match="frozen"):
+        first_task.generation_spec.prompt = "changed"
+
+
+def test_planner_rejects_a_budget_when_selected_cost_is_unknown() -> None:
+    class UnknownCostAdapter(MockProviderAdapter):
+        def estimate_cost(self, request: ShotGenerationSpec) -> CostEstimate:
+            return CostEstimate(confidence="unknown")
+
+    prepared = _prepared()
+    registry = ProviderRegistry()
+    registry.register(UnknownCostAdapter("mock/unknown"))
+    planner = ProviderExecutionPlanner(registry)
+    with pytest.raises(ProviderPlanningError, match="cannot enforce max_cost_cny"):
+        planner.plan(
+            prepared,
+            ProviderProfile(
+                profile_id="unknown-cost",
+                routing_mode="pinned",
+                route_priority=["mock/unknown"],
+                max_cost_cny=1,
+            ),
+        )
 
 
 def test_planner_requires_compatible_route_and_records_approved_fallback() -> None:
