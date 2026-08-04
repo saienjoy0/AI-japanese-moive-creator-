@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   actions: read
+  checks: read
 
 jobs:
   probe:
@@ -16,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/ci-foundation-smoke-tests
-      - name: Capture recent workflow runs
+      - name: Capture recent workflow runs and check annotations
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.run_id }}
@@ -30,14 +31,22 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs?branch=feature%2Fci-foundation-smoke-tests&per_page=20" \
             > ci-results/runs-raw.json
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/check-runs" \
+            > ci-results/checks-raw.json
           python - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          raw = json.loads(Path("ci-results/runs-raw.json").read_text(encoding="utf-8"))
+          raw_runs = json.loads(Path("ci-results/runs-raw.json").read_text(encoding="utf-8"))
+          raw_checks = json.loads(Path("ci-results/checks-raw.json").read_text(encoding="utf-8"))
+
           runs = []
-          for item in raw.get("workflow_runs", []):
+          for item in raw_runs.get("workflow_runs", []):
               runs.append({
                   "id": item.get("id"),
                   "name": item.get("name"),
@@ -49,10 +58,29 @@ jobs:
                   "created_at": item.get("created_at"),
                   "html_url": item.get("html_url"),
               })
+
+          checks = []
+          for item in raw_checks.get("check_runs", []):
+              output = item.get("output") or {}
+              checks.append({
+                  "id": item.get("id"),
+                  "name": item.get("name"),
+                  "status": item.get("status"),
+                  "conclusion": item.get("conclusion"),
+                  "details_url": item.get("details_url"),
+                  "output": {
+                      "title": output.get("title"),
+                      "summary": output.get("summary"),
+                      "text": output.get("text"),
+                      "annotations_count": output.get("annotations_count"),
+                  },
+              })
+
           report = {
               "probe_run_id": int(os.environ["RUN_ID"]),
               "source_sha": os.environ["SOURCE_SHA"],
               "runs": runs,
+              "checks": checks,
           }
           Path("ci-results/probe.json").write_text(
               json.dumps(report, indent=2) + "\n",
@@ -62,10 +90,14 @@ jobs:
               json.dumps(runs, indent=2) + "\n",
               encoding="utf-8",
           )
+          Path("ci-results/check-runs.json").write_text(
+              json.dumps(checks, indent=2) + "\n",
+              encoding="utf-8",
+          )
           PY
-          rm ci-results/runs-raw.json
+          rm ci-results/runs-raw.json ci-results/checks-raw.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- ci-results/probe.json ci-results/runs.json
+          git add -- ci-results/probe.json ci-results/runs.json ci-results/check-runs.json
           git commit -m "chore: record ci trigger probe [skip ci]"
           git push origin HEAD:feature/ci-foundation-smoke-tests
