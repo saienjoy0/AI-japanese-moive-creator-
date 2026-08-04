@@ -44,7 +44,7 @@ class ProviderCoreModel(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         str_strip_whitespace=True,
-        validate_assignment=True,
+        frozen=True,
     )
 
 
