@@ -7,7 +7,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from ..preparation.models import PreparedEpisode, RenderTaskNode
 from .ffmpeg import (
@@ -28,11 +28,11 @@ from .models import (
 
 
 class RenderExecutionError(RuntimeError):
-    """Base error for PR6 execution failures."""
+    """Base error for render execution failures."""
 
 
 class RenderStateConflictError(RenderExecutionError):
-    """Existing state belongs to a different input or graph."""
+    """Existing state belongs to a different input, graph, or provider profile."""
 
 
 class RenderTaskFailedError(RenderExecutionError):
@@ -52,7 +52,7 @@ class RenderGraphRunner:
         *,
         output_file: str | Path,
         work_dir: str | Path,
-        executor: MockTaskExecutor | None = None,
+        executor: Any | None = None,
         persistence_status: str | None = None,
     ) -> None:
         self.prepared = prepared
@@ -61,6 +61,13 @@ class RenderGraphRunner:
         self.state_file = self.work_dir / "render_state.json"
         self.report_file = self.work_dir / "validation_report.json"
         self.executor = executor or MockTaskExecutor()
+        self.execution_profile = str(
+            getattr(self.executor, "execution_profile", "mock:local-v1")
+        )
+        raw_manifest = getattr(self.executor, "provider_manifest", {"mode": "mock"})
+        self.provider_manifest = dict(raw_manifest) if isinstance(raw_manifest, dict) else {
+            "mode": "unknown"
+        }
         self.persistence_status = persistence_status
         self.frames_by_shot = {
             frame.source_shot_id: frame
@@ -106,7 +113,11 @@ class RenderGraphRunner:
                 continue
 
             dependencies = [state.task_states[dependency] for dependency in node.depends_on]
-            unresolved = [dependency.task_id for dependency in dependencies if dependency.status != "succeeded"]
+            unresolved = [
+                dependency.task_id
+                for dependency in dependencies
+                if dependency.status != "succeeded"
+            ]
             if unresolved:
                 raise RenderExecutionError(
                     f"task {task_id} has unresolved dependencies: {unresolved}"
@@ -127,6 +138,7 @@ class RenderGraphRunner:
                 for dependency in dependencies
                 for relative in dependency.output_files
             ]
+            calls_before = self._executor_api_calls()
             try:
                 outputs = self.executor.execute(
                     TaskContext(
@@ -138,6 +150,7 @@ class RenderGraphRunner:
                     )
                 )
             except Exception as exc:
+                self._record_api_delta(state, task_state, calls_before)
                 task_state.status = "failed"
                 task_state.last_error = f"{type(exc).__name__}: {exc}"
                 task_state.output_files = []
@@ -147,6 +160,7 @@ class RenderGraphRunner:
                     f"task {task_id} failed; rerun the same command to resume: {exc}"
                 ) from exc
 
+            self._record_api_delta(state, task_state, calls_before)
             task_state.status = "succeeded"
             task_state.last_error = None
             task_state.output_files = [self._relative_output(path) for path in outputs]
@@ -158,6 +172,7 @@ class RenderGraphRunner:
             [
                 self.prepared.source_digest,
                 self.graph_fingerprint,
+                self.execution_profile,
                 *[file_sha256(path) for path in final_shots],
             ]
         )
@@ -246,7 +261,9 @@ class RenderGraphRunner:
             shot_order=active_state.final_shot_order,
             source_digest=self.prepared.source_digest,
             graph_fingerprint=self.graph_fingerprint,
-            external_api_calls=0,
+            execution_profile=active_state.execution_profile,
+            provider_manifest=active_state.provider_manifest,
+            external_api_calls=active_state.external_api_calls,
             valid=not errors,
             errors=errors,
         )
@@ -261,6 +278,8 @@ class RenderGraphRunner:
                 conflicts.append("project ID")
             if state.graph_fingerprint != self.graph_fingerprint:
                 conflicts.append("render graph")
+            if state.execution_profile != self.execution_profile:
+                conflicts.append("execution provider profile")
             if Path(state.output_file).resolve() != self.output_file:
                 conflicts.append("output file")
             if conflicts:
@@ -269,6 +288,8 @@ class RenderGraphRunner:
                 )
             if state.persistence_status is None and self.persistence_status is not None:
                 state.persistence_status = self.persistence_status
+            if not state.provider_manifest:
+                state.provider_manifest = self.provider_manifest
             return state
 
         shot_states: dict[str, ShotExecutionState] = {}
@@ -290,17 +311,7 @@ class RenderGraphRunner:
                 task_id=node.task_id,
                 shot_id=node.shot_id,
                 task_type=node.task_type,
-                input_fingerprint=canonical_digest(
-                    [
-                        self.prepared.source_digest,
-                        json.dumps(
-                            node.model_dump(mode="json"),
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    ]
-                ),
+                input_fingerprint=self._task_input_fingerprint(node),
             )
             for node in self.prepared.render_graph.nodes
         }
@@ -309,6 +320,8 @@ class RenderGraphRunner:
             project_id=self.prepared.project_draft.project_id,
             output_file=str(self.output_file),
             graph_fingerprint=self.graph_fingerprint,
+            execution_profile=self.execution_profile,
+            provider_manifest=self.provider_manifest,
             task_order=self.task_order,
             final_shot_order=[frame.source_shot_id for frame in ordered_frames],
             task_states=task_states,
@@ -321,19 +334,65 @@ class RenderGraphRunner:
         for task_id in self.task_order:
             node = self.nodes_by_id[task_id]
             task = state.task_states[task_id]
+            expected_fingerprint = self._task_input_fingerprint(node)
+            if task.input_fingerprint != expected_fingerprint:
+                task.input_fingerprint = expected_fingerprint
+                task.status = "pending"
+                task.output_files = []
+                invalid.add(task_id)
+                continue
             if task.status == "running":
                 task.status = "failed"
                 task.last_error = "interrupted before completion"
             dependency_invalid = any(dependency in invalid for dependency in node.depends_on)
-            if task.status == "succeeded" and not dependency_invalid and self._outputs_exist(task.output_files):
+            if (
+                task.status == "succeeded"
+                and not dependency_invalid
+                and self._outputs_exist(task.output_files)
+            ):
                 continue
-            if task.status == "failed" and not dependency_invalid:
-                task.status = "pending"
-            else:
-                task.status = "pending"
+            task.status = "pending"
             task.output_files = []
             invalid.add(task_id)
         self._refresh_shot_states(state)
+
+    def _task_input_fingerprint(self, node: RenderTaskNode) -> str:
+        return canonical_digest(
+            [
+                self.prepared.source_digest,
+                self.execution_profile,
+                json.dumps(
+                    self.provider_manifest,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                json.dumps(
+                    node.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
+
+    def _executor_api_calls(self) -> int:
+        value = getattr(self.executor, "external_api_calls", 0)
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 0
+
+    def _record_api_delta(
+        self,
+        state: RenderRunState,
+        task: TaskExecutionState,
+        calls_before: int,
+    ) -> None:
+        delta = max(0, self._executor_api_calls() - calls_before)
+        if delta:
+            task.external_api_calls += delta
+            state.external_api_calls += delta
 
     def _refresh_shot_states(self, state: RenderRunState) -> None:
         for shot in state.shot_states.values():
@@ -408,7 +467,11 @@ class RenderGraphRunner:
         ordered: list[str] = []
         while remaining:
             ready = sorted(
-                (task_id for task_id, dependencies in remaining.items() if dependencies <= resolved),
+                (
+                    task_id
+                    for task_id, dependencies in remaining.items()
+                    if dependencies <= resolved
+                ),
                 key=order_index.__getitem__,
             )
             if not ready:
