@@ -1,6 +1,6 @@
 # Foundation CI
 
-This repository must be testable without paid AI calls before Japanese short-drama features are added.
+This repository must be testable without paid AI calls before Japanese short-drama features are added. The workflow is required on pull requests targeting `main` so later feature failures can be separated from upstream foundation failures.
 
 ## What the workflow checks
 
