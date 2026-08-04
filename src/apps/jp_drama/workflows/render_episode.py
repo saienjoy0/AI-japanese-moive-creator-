@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -44,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Persist a PreparedEpisode, execute its RenderGraph with live image/video/TTS "
-            "providers, and write one vertical MP4."
+            "providers, and write one vertical MP4. Use render_canary_episode before a full run."
         )
     )
     parser.add_argument("--input", required=True, help="PreparedEpisode JSON")
@@ -74,6 +73,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate the plan and provider configuration without making API calls",
     )
     parser.add_argument(
+        "--max-api-calls",
+        type=int,
+        default=0,
+        help=(
+            "Hard provider-submission ceiling. Full live execution is blocked unless "
+            "this explicitly covers the preflight estimate."
+        ),
+    )
+    parser.add_argument(
         "--print-report",
         action="store_true",
         help="Print the complete validation or preflight report JSON",
@@ -93,18 +101,21 @@ def _preflight_report(
     prepared: PreparedEpisode,
     config: LiveProviderConfig,
 ) -> dict[str, object]:
-    required = config.dashscope.api_key_env
+    required = config.dashscope.required_environment()
+    missing = config.dashscope.missing_environment()
     return {
         "valid": prepared.readiness_report.generation_ready,
         "project_id": prepared.project_draft.project_id,
         "source_digest": prepared.source_digest,
         "execution_profile": config.execution_profile,
         "provider_manifest": config.provider_manifest,
-        "required_environment": [required],
-        "credentials_present": bool(os.getenv(required, "").strip()),
+        "required_environment": required,
+        "missing_environment": missing,
+        "credentials_present": not missing,
         "estimated_external_api_calls": LiveTaskExecutor.estimate_api_calls(prepared),
         "shot_count": len(prepared.storyboard_frame_drafts),
         "target_duration_seconds": prepared.project_draft.target_duration_seconds,
+        "warning": "Run the one-shot canary workflow before a full paid render.",
     }
 
 
@@ -151,15 +162,28 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"Project: {prepared.project_draft.project_id}\n"
                 f"Provider: {config.dashscope.provider}\n"
+                f"Region: {config.dashscope.region}\n"
                 f"Estimated API calls: {report['estimated_external_api_calls']}\n"
-                f"Credential present: {'YES' if report['credentials_present'] else 'NO'}\n"
+                f"Environment ready: {'YES' if report['credentials_present'] else 'NO'}\n"
                 "Preflight: VALID"
             )
         return EXIT_OK
 
+    estimated_calls = LiveTaskExecutor.estimate_api_calls(prepared)
+    if args.max_api_calls < 0:
+        print("provider error: --max-api-calls cannot be negative", file=sys.stderr)
+        return EXIT_PROVIDER
+    if args.max_api_calls < estimated_calls:
+        print(
+            f"provider error: full render needs an explicit --max-api-calls "
+            f"of at least {estimated_calls}; run the one-shot canary first",
+            file=sys.stderr,
+        )
+        return EXIT_PROVIDER
+
     try:
         config.require_environment()
-        executor = LiveTaskExecutor(config)
+        executor = LiveTaskExecutor(config, api_call_limit=args.max_api_calls)
     except ProviderConfigurationError as exc:
         print(f"provider error: {exc}", file=sys.stderr)
         return EXIT_PROVIDER
