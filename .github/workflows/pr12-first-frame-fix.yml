@@ -35,59 +35,41 @@ jobs:
           path = Path("src/apps/jp_drama/generation/compiler.py")
           text = path.read_text(encoding="utf-8")
 
-          old_call = '''    reference_ids = _reference_ids(
-              continuity_group_id,
-              segment_id,
-              frame.character_seed_ids,
-              frame.location_seed_id,
-              frame.prop_seed_ids,
+          call_needle = "        frame.prop_seed_ids,\n    )\n    source_intent"
+          call_replacement = (
+              "        frame.prop_seed_ids,\n"
+              "        requires_first_frame=(\n"
+              "            capabilities.image_to_video and not capabilities.text_to_video\n"
+              "        )\n"
+              "        or profile.route_id == \"wan/i2v\",\n"
+              "    )\n"
+              "    source_intent"
           )
-          '''
-          new_call = '''    reference_ids = _reference_ids(
-              continuity_group_id,
-              segment_id,
-              frame.character_seed_ids,
-              frame.location_seed_id,
-              frame.prop_seed_ids,
-              requires_first_frame=(
-                  capabilities.image_to_video and not capabilities.text_to_video
-              )
-              or profile.route_id == "wan/i2v",
+          assert call_needle in text
+          text = text.replace(call_needle, call_replacement, 1)
+
+          signature_needle = "    props: list[str],\n) -> list[str]:\n    values = ["
+          signature_replacement = (
+              "    props: list[str],\n"
+              "    *,\n"
+              "    requires_first_frame: bool,\n"
+              ") -> list[str]:\n"
+              "    values = ["
           )
-          '''
-          assert old_call in text
-          text = text.replace(old_call, new_call, 1)
+          assert signature_needle in text
+          text = text.replace(signature_needle, signature_replacement, 1)
 
-          old_signature = '''def _reference_ids(
-              group_id: str,
-              segment_id: str,
-              characters: list[str],
-              location: str,
-              props: list[str],
-          ) -> list[str]:
-          '''
-          new_signature = '''def _reference_ids(
-              group_id: str,
-              segment_id: str,
-              characters: list[str],
-              location: str,
-              props: list[str],
-              *,
-              requires_first_frame: bool,
-          ) -> list[str]:
-          '''
-          assert old_signature in text
-          text = text.replace(old_signature, new_signature, 1)
-
-          old_append = '''    values.append(f"ref_first_{_short_hash(segment_id, 'first_frame')}")
-              return values
-          '''
-          new_append = '''    if requires_first_frame:
-                  values.append(f"ref_first_{_short_hash(segment_id, 'first_frame')}")
-              return values
-          '''
-          assert old_append in text
-          text = text.replace(old_append, new_append, 1)
+          append_needle = (
+              "    values.append(f\"ref_first_{_short_hash(segment_id, 'first_frame')}\")\n"
+              "    return values\n"
+          )
+          append_replacement = (
+              "    if requires_first_frame:\n"
+              "        values.append(f\"ref_first_{_short_hash(segment_id, 'first_frame')}\")\n"
+              "    return values\n"
+          )
+          assert append_needle in text
+          text = text.replace(append_needle, append_replacement, 1)
           path.write_text(text, encoding="utf-8")
           PY
 
