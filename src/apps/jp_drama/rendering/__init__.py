@@ -76,8 +76,10 @@ from .provider_registry import (
     Wan27PlanningAdapter,
     build_default_provider_registry,
 )
+from .wan_master_tasks import WanMasterReferenceLiveTaskExecutor
 
-# PR8 makes the official Wan 2.7 compatibility executor the public live path.
+# PR8 makes the official Wan 2.7 compatibility executor the public legacy live path.
+# Production first-frame generation should use WanMasterReferenceLiveTaskExecutor.
 LiveTaskExecutor = Wan27LiveTaskExecutor
 
 __all__ = [
@@ -140,6 +142,7 @@ __all__ = [
     "Wan27ImagePlanningAdapter",
     "Wan27LiveTaskExecutor",
     "Wan27PlanningAdapter",
+    "WanMasterReferenceLiveTaskExecutor",
     "build_default_provider_registry",
     "create_approval_manifest",
     "load_and_verify_approval",
