@@ -62,12 +62,16 @@ jobs:
             tests/test_jp_drama_generation_segments.py \
             tests/test_jp_drama_wan27_canary.py
 
-      - name: Build a real-script generation plan
+      - name: Build a generation plan from a normal Japanese MD script
         run: |
           rm -rf output/jp_drama/pr12
           mkdir -p output/jp_drama/pr12
+          python -m src.apps.jp_drama.workflows.ingest_script \
+            --input examples/jp_drama/script_ingestion/sample_script.md \
+            --output-dir output/jp_drama/pr12/ingestion \
+            --llm-provider fixture
           python -m src.apps.jp_drama.workflows.prepare_episode \
-            --input examples/jp_drama/minimal_episode_package.json \
+            --input output/jp_drama/pr12/ingestion/episode_package.json \
             --output output/jp_drama/pr12/prepared \
             --catalog examples/jp_drama/model_capabilities.json \
             --strict
@@ -127,6 +131,9 @@ jobs:
           from pathlib import Path
 
           report = json.loads(Path("output/jp_drama/pr12/segment-canary-report.json").read_text())
+          ingestion = json.loads(Path("output/jp_drama/pr12/ingestion/ingestion_report.json").read_text())
+          assert ingestion["valid"] is True
+          assert ingestion["external_api_calls"] == 0
           assert report["canary_protocol"] == "generation-segment-canary-v1"
           assert report["stage"] == "preflight"
           assert report["provider_route_id"] == "wan/i2v"
@@ -164,6 +171,7 @@ jobs:
         with:
           name: jp-drama-generation-segment-canary-contract
           path: |
+            output/jp_drama/pr12/ingestion
             output/jp_drama/pr12/generation
             output/jp_drama/pr12/segment-canary-report.json
             output/jp_drama/pr12/materialized-segment-prepared.json
