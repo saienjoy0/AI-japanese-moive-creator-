@@ -68,6 +68,11 @@ def test_45_second_fixture_compiles_into_variable_segments() -> None:
     assert plan.readiness_report.execution_route_ready is True
     assert plan.readiness_report.media_quality_validated is False
     assert plan.readiness_report.external_api_calls == 0
+    assert plan.cost_plan.expected_calls == 8
+    assert all(
+        item.role != "first_frame"
+        for item in plan.reference_asset_requirements
+    )
 
 
 def test_frame_timeline_and_dialogue_coverage_are_exact() -> None:
