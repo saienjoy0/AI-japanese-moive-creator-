@@ -1,0 +1,69 @@
+name: Apply H3 Safety Fix
+
+on:
+  push:
+    branches: [feature/jp-drama-minimax-h3-core]
+    paths:
+      - tools/apply_h3_safety_fix.py
+      - .github/workflows/apply-h3-safety-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/jp-drama-minimax-h3-core
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+      - name: Materialize reviewed H3 safety patch
+        run: python tools/apply_h3_safety_fix.py
+      - name: Install focused dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<9"
+      - name: Compile and run H3 regression suite
+        env:
+          MINIMAX_API_KEY: ""
+        run: |
+          python -m compileall -q src/apps/jp_drama
+          python -m pytest -q \
+            tests/test_jp_drama_minimax_h3_core.py \
+            tests/test_jp_drama_minimax_h3_safety.py \
+            tests/test_jp_drama_multi_provider_core.py \
+            tests/test_jp_drama_generation_segments.py
+      - name: Commit exact reviewed scope
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            .github/workflows/apply-h3-safety-fix.yml \
+            tools/apply_h3_safety_fix.py \
+            .github/workflows/jp-drama-minimax-h3-core.yml \
+            .github/workflows/jp-drama-minimax-h3-paid-canary.yml \
+            docs/pr14-minimax-h3-provider-core.md \
+            examples/jp_drama/minimax_h3_asset_manifest.example.json \
+            src/apps/jp_drama/rendering/media_probe.py \
+            src/apps/jp_drama/rendering/minimax_h3_approval.py \
+            src/apps/jp_drama/rendering/minimax_h3_canary.py \
+            src/apps/jp_drama/rendering/minimax_h3_client.py \
+            src/apps/jp_drama/rendering/minimax_h3_executor.py \
+            src/apps/jp_drama/rendering/minimax_h3_models.py \
+            src/apps/jp_drama/rendering/provider_execution_ledger.py \
+            src/apps/jp_drama/workflows/render_minimax_h3_segment_canary.py \
+            tests/test_jp_drama_minimax_h3_core.py \
+            tests/test_jp_drama_minimax_h3_safety.py
+          git diff --cached --check
+          git commit -m "feat: add approval-gated MiniMax H3 paid canary"
+          git push origin HEAD:feature/jp-drama-minimax-h3-core
