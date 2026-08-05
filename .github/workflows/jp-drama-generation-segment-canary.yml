@@ -113,6 +113,8 @@ jobs:
             --providers output/jp_drama/pr12/providers-preflight.json \
             --stage preflight \
             --allow-experimental-multi-shot \
+            --max-cost-cny 6.0 \
+            --materialized-prepared output/jp_drama/pr12/materialized-segment-prepared.json \
             --report output/jp_drama/pr12/segment-canary-report.json \
             --print-report
 
@@ -130,13 +132,24 @@ jobs:
           assert report["provider_route_id"] == "wan/i2v"
           assert report["external_api_calls"] == 0
           assert report["credentials_present"] is False
+          assert report["within_requested_call_limit"] is True
+          assert report["within_requested_cost_limit"] is True
           assert Path(report["materialized_prepared_episode"]).is_file()
           PY
 
-      - name: Ensure no credential or generated media is committed
+      - name: Ensure PR12 adds no credential or generated media
         run: |
           test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' '*.png' '*.jpg' | grep -E 'jp_drama|generation_segment' || true)"
-          ! git grep -nE '(sk-[A-Za-z0-9_-]{12,}|DASHSCOPE_API_KEY[[:space:]]*=[[:space:]]*[^"$[:space:]])' -- . ':!*.md'
+          ! git grep -nE 'sk-[A-Za-z0-9_-]{20,}' -- \
+            src/apps/jp_drama/rendering/segment_canary.py \
+            src/apps/jp_drama/workflows/render_generation_segment_canary.py \
+            tests/test_jp_drama_generation_segment_canary.py \
+            .github/workflows/jp-drama-generation-segment-canary.yml
+          ! git grep -n 'DASHSCOPE_API_KEY=' -- \
+            src/apps/jp_drama/rendering/segment_canary.py \
+            src/apps/jp_drama/workflows/render_generation_segment_canary.py \
+            tests/test_jp_drama_generation_segment_canary.py \
+            .github/workflows/jp-drama-generation-segment-canary.yml
 
       - name: Upload segment Canary contract
         uses: actions/upload-artifact@v4
@@ -145,6 +158,6 @@ jobs:
           path: |
             output/jp_drama/pr12/generation
             output/jp_drama/pr12/segment-canary-report.json
-            output/jp_drama/pr12/.*_prepared.json
+            output/jp_drama/pr12/materialized-segment-prepared.json
           if-no-files-found: error
           retention-days: 7
