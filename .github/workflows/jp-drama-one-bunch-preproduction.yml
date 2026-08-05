@@ -1,0 +1,164 @@
+name: Japanese Drama One Bunch Preproduction
+
+on:
+  pull_request:
+    paths:
+      - "src/apps/jp_drama/preproduction/**"
+      - "src/apps/jp_drama/workflows/build_preproduction_package.py"
+      - "src/apps/jp_drama/workflows/render_wan_master_keyframe.py"
+      - "tests/test_jp_drama_preproduction_package.py"
+      - "tests/test_jp_drama_wan_master_keyframe_workflow.py"
+      - "docs/pr27-preproduction-package.md"
+      - ".github/workflows/jp-drama-one-bunch-preproduction.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/preproduction/**"
+      - "src/apps/jp_drama/workflows/build_preproduction_package.py"
+      - "src/apps/jp_drama/workflows/render_wan_master_keyframe.py"
+      - "tests/test_jp_drama_preproduction_package.py"
+      - "tests/test_jp_drama_wan_master_keyframe_workflow.py"
+      - "docs/pr27-preproduction-package.md"
+      - ".github/workflows/jp-drama-one-bunch-preproduction.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preproduction:
+    name: Build pinned zero-call 一房の葡萄 preproduction package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout AI movie creator
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Storyboard source
+        uses: actions/checkout@v4
+        with:
+          repository: saienjoy0/Storyboard-Generator
+          ref: 3070100f6ff25a3994a749b240f423f703cd294f
+          path: storyboard-source
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<10"
+
+      - name: Compile preproduction contracts
+        run: |
+          python -m compileall -q \
+            src/apps/jp_drama/preproduction \
+            src/apps/jp_drama/workflows/build_preproduction_package.py \
+            src/apps/jp_drama/workflows/render_wan_master_keyframe.py
+
+      - name: Run pinned integration and keyframe-boundary tests
+        env:
+          STORYBOARD_SOURCE_DIR: storyboard-source
+          DASHSCOPE_API_KEY: ""
+          MINIMAX_API_KEY: ""
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ""
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ""
+          OSS_ENDPOINT: ""
+          OSS_BUCKET_NAME: ""
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_preproduction_package.py \
+            tests/test_jp_drama_wan_master_keyframe_workflow.py \
+            tests/test_jp_drama_wan_master_reference_keyframes.py \
+            tests/test_jp_drama_series_plan_import.py \
+            tests/test_jp_drama_production_entry.py
+
+      - name: Import pinned three-episode production contract
+        run: |
+          rm -rf output/one-bunch-series output/one-bunch-preproduction
+          python -m src.apps.jp_drama.workflows.import_series_production_plan \
+            --series-plan "storyboard-source/projects/一房の葡萄/一房の葡萄_generation_plan.yaml" \
+            --asset-catalog "storyboard-source/projects/一房の葡萄/一房の葡萄_asset_catalog.yaml" \
+            --output-dir output/one-bunch-series \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json \
+            --minimax-h3-config examples/jp_drama/minimax_h3_live_provider.json \
+            --source-commit 3070100f6ff25a3994a749b240f423f703cd294f \
+            --require-route-ready
+
+      - name: Build video-before-stage package
+        run: |
+          python -m src.apps.jp_drama.workflows.build_preproduction_package \
+            --series-output output/one-bunch-series \
+            --source-series-plan "storyboard-source/projects/一房の葡萄/一房の葡萄_generation_plan.yaml" \
+            --source-asset-catalog "storyboard-source/projects/一房の葡萄/一房の葡萄_asset_catalog.yaml" \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json \
+            --output-dir output/one-bunch-preproduction \
+            --print-report
+
+      - name: Verify exact preproduction outputs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("output/one-bunch-preproduction")
+          manifest = json.loads((root / "preproduction_manifest.json").read_text(encoding="utf-8"))
+          assets = json.loads((root / "asset_creation_checklist.json").read_text(encoding="utf-8"))
+          voices = json.loads((root / "voice_identity_checklist.json").read_text(encoding="utf-8"))
+          frames = json.loads((root / "first_frame_plan.json").read_text(encoding="utf-8"))
+          routes = json.loads((root / "provider_route_summary.json").read_text(encoding="utf-8"))
+          canary = json.loads((root / "canary_recommendation.json").read_text(encoding="utf-8"))
+          commands = json.loads((root / "bundle_approval_commands.json").read_text(encoding="utf-8"))
+
+          assert manifest["episode_count"] == 3
+          assert manifest["segment_count"] == 15
+          assert manifest["base_master_asset_count"] == 17
+          assert manifest["voice_identity_count"] == 4
+          assert manifest["first_frame_count"] == 15
+          assert manifest["provider_route_count"] == 9
+          assert manifest["contract_ready"] is True
+          assert manifest["provider_plans_ready"] is True
+          assert manifest["video_generation_ready"] is False
+          assert manifest["external_api_calls"] == 0
+          assert len(assets) == 17
+          assert len(voices) == 4
+          assert len(frames) == 15
+          assert len(routes) == 9
+          assert len(commands) == 9
+          assert canary["recommendation_ready"] is False
+          assert canary.get("recommended_episode_id") is None
+          assert canary.get("recommended_segment_id") is None
+          assert all(
+              all(
+                  "provider_duration_exceeded" in rejected["reason_codes"]
+                  for rejected in decision["rejected_segments"]
+              )
+              for decision in canary["episode_decisions"]
+          )
+          assert len(list((root / "approval_templates").rglob("bindings.template.json"))) == 9
+          assert len(list((root / "production_contract").rglob("generation_plan_episode.json"))) == 9
+          assert len(list((root / "production_contract").rglob("asset_bundle_pending.json"))) == 9
+          PY
+
+      - name: Verify no credentials, media, or provider calls
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          test -z "${MINIMAX_API_KEY:-}"
+          test -z "${MULEROUTER_API_KEY:-}"
+          test "$(find output/one-bunch-preproduction -type f \( -name '*.mp4' -o -name '*.mov' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.wav' -o -name '*.mp3' \) | wc -l)" -eq 0
+          grep -q '"external_api_calls": 0' output/one-bunch-preproduction/preproduction_manifest.json
+          grep -q 'COPY_APPROVAL_DIGEST_FROM_PREFLIGHT' output/one-bunch-preproduction/first_frame_plan.json
+
+      - name: Upload preproduction evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-bunch-video-before-stage-package
+          path: output/one-bunch-preproduction
+          if-no-files-found: error
