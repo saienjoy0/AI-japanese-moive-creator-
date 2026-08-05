@@ -60,6 +60,18 @@ def validate_segment_canary_contract(
         raise SegmentCanaryError(
             "wan/i2v native audio is not migrated; use external_audio_post or silent"
         )
+    provider_frame_count = segment.requested_duration_seconds * segment.timeline_fps
+    if (
+        segment.used_start_frame < 0
+        or segment.used_end_frame > provider_frame_count
+        or segment.used_end_frame <= segment.used_start_frame
+        or segment.used_end_frame - segment.used_start_frame
+        != segment.editorial_frame_count
+    ):
+        raise SegmentCanaryError(
+            "segment trim window is invalid for the requested provider clip; refusing "
+            "to execute an oversized or truncated editorial interval"
+        )
     if len(segment.editorial_shots) > 1 and not allow_experimental_multi_shot:
         raise SegmentCanaryError(
             "segment contains multiple editorial shots; pass "
