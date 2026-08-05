@@ -29,6 +29,12 @@ POST直前にledgerへ`submitting`を書き込む。プロセスがtask_id保存
 
 参照素材のURLだけでは同一性を判断せず、素材SHA-256をrequest fingerprintとledgerへ保存する。素材メタデータが欠ける場合や`pending://`が残る場合はAPIへ送信しない。
 
+## 料金境界
+
+このPRで送信前に強制する`max_cost_usd`は、MiniMax H3の出力動画、参照動画入力、追加参照画像を対象にする。外部Qwen3-TTSは別プロバイダ・別通貨の委譲タスクなので、H3のUSD上限へ混ぜない。計画成果物にはTTSを未確定の別項目として残し、後続PRでCNY上限を独立して設定する。
+
+これにより、USDだけを指定した上限がCNYのTTSまで保証するように見える誤った総予算表示を避ける。H3の実POSTはExecutorの永続的なUSD上限を必ず通過する。
+
 ## 計画生成
 
 ```bash
@@ -40,6 +46,6 @@ python -m src.apps.jp_drama.workflows.prepare_generation \
   --minimax-h3-config examples/jp_drama/minimax_h3_live_provider.json
 ```
 
-この段階では外部APIを呼ばない。通常台本の計画CIでは、H3ルートエラーがゼロ、料金不明項目がゼロ、外部API呼び出しがゼロであることを検査する。台本自体の境界不足によるplanning errorはroute errorと区別する。
+この段階では外部APIを呼ばない。通常台本の計画CIでは、H3ルートエラーがゼロ、H3動画項目がUSD・exactであること、未確定項目が委譲TTSだけであること、外部API呼び出しがゼロであることを検査する。台本自体の境界不足によるplanning errorはroute errorと区別する。
 
 実API Canary、Qwen3-TTS音声ファイル入力、音声ミックス、全話逐次生成は次PRで接続する。
