@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ..generation.models import GenerationPlanEpisode, GenerationSegment
 from ..preparation.models import PreparedEpisode
@@ -143,6 +145,8 @@ def build_wan_master_reference_manifest(
     ]
     if not planned_ids:
         raise WanMasterReferenceError("Wan segment has no planned master references")
+    if len(planned_ids) != len(set(planned_ids)):
+        raise WanMasterReferenceError("Wan segment contains duplicate master references")
     if len(planned_ids) > 9:
         raise WanMasterReferenceError("Wan first frame exceeds nine master references")
 
@@ -163,22 +167,6 @@ def build_wan_master_reference_manifest(
 
 def verify_wan_master_reference_manifest(
     manifest: WanMasterReferenceManifest,
-    plan: GenerationPlanEpisode,
-    bundle: ApprovedAssetBundle,
-    *,
-    segment_id: str,
-) -> WanMasterReferenceManifest:
-    rebuilt = build_wan_master_reference_manifest(
-        _prepared_not_available(),
-        plan,
-        bundle,
-        segment_id=segment_id,
-    )
-    raise AssertionError("unreachable")
-
-
-def verify_wan_master_reference_manifest_for_episode(
-    manifest: WanMasterReferenceManifest,
     prepared: PreparedEpisode,
     plan: GenerationPlanEpisode,
     bundle: ApprovedAssetBundle,
@@ -196,6 +184,43 @@ def verify_wan_master_reference_manifest_for_episode(
             "Wan master reference files, plan, or AssetBundle changed"
         )
     return rebuilt
+
+
+def load_wan_master_reference_manifest(
+    path: str | Path,
+) -> WanMasterReferenceManifest:
+    source = Path(path).resolve()
+    try:
+        return WanMasterReferenceManifest.model_validate_json(
+            source.read_text(encoding="utf-8")
+        )
+    except (OSError, ValidationError) as exc:
+        raise WanMasterReferenceError(
+            f"cannot load Wan master reference manifest {source}: {exc}"
+        ) from exc
+
+
+def write_wan_master_reference_manifest(
+    manifest: WanMasterReferenceManifest,
+    path: str | Path,
+) -> Path:
+    destination = Path(path).resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=destination.parent,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(manifest.to_canonical_json())
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return destination
 
 
 def _find_wan_segment(
@@ -259,10 +284,4 @@ def _materialize_reference(
         height=height,
         generated_by=asset.generated_by,
         operation_id=asset.operation_id,
-    )
-
-
-def _prepared_not_available():
-    raise WanMasterReferenceError(
-        "PreparedEpisode is required; use verify_wan_master_reference_manifest_for_episode"
     )
