@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         "segment_id": manifest.segment_id,
         "provider_route_id": manifest.provider_route_id,
         "generation_plan_digest": manifest.generation_plan_digest,
-        "asset_bundle_digest": manifest.asset_bundle_digest,
+        "master_asset_set_digest": manifest.master_asset_set_digest,
         "master_reference_manifest": str(destination),
         "master_reference_manifest_digest": manifest.content_digest,
         "reference_asset_ids": manifest.asset_ids,
