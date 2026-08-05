@@ -31,6 +31,7 @@ ReferenceRole = Literal[
     "video_reference",
     "driving_audio",
     "voice_reference",
+    "reference_audio",
 ]
 GenerationModality = Literal["image", "video", "speech"]
 ProviderExecutionMode = Literal["automatic", "manual"]
@@ -145,7 +146,7 @@ class ShotGenerationSpec(ProviderCoreModel):
     modality: GenerationModality
     duration_seconds: float = Field(gt=0)
     aspect_ratio: Literal["9:16"] = "9:16"
-    resolution: Literal["720P", "1080P"] = "720P"
+    resolution: Literal["720P", "768P", "1080P", "2K"] = "720P"
     prompt: str = Field(min_length=1)
     negative_prompt: str | None = None
     dialogue: list[DialogueLine] = Field(default_factory=list)
@@ -227,7 +228,15 @@ class PreparedProviderRequest(ProviderCoreModel):
 class ProviderSubmission(ProviderCoreModel):
     route_id: str
     operation_id: str
-    status: Literal["submitted", "running", "succeeded", "awaiting_operator"]
+    status: Literal[
+        "submitted",
+        "queued",
+        "running",
+        "succeeded",
+        "cancelled",
+        "submission_unknown",
+        "awaiting_operator",
+    ]
     provider_task_id: str | None = None
     provider_request_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -236,7 +245,14 @@ class ProviderSubmission(ProviderCoreModel):
 class ProviderPollResult(ProviderCoreModel):
     route_id: str
     operation_id: str
-    status: Literal["running", "succeeded", "failed", "awaiting_operator"]
+    status: Literal[
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "awaiting_operator",
+    ]
     provider_task_id: str | None = None
     output_uris: list[str] = Field(default_factory=list)
     error: str | None = None
