@@ -124,6 +124,7 @@ class MiniMaxH3Client:
         task = data.get("task") if isinstance(data.get("task"), dict) else data
         raw_status = str(task.get("status") or data.get("status") or "").lower()
         provider_status = {
+            "preparing": "queued",
             "queueing": "queued",
             "processing": "running",
             "success": "succeeded",
@@ -150,9 +151,15 @@ class MiniMaxH3Client:
             or _find_first_string(data, "video_url", "file_url", "url")
         )
         error = _extract_error_message(data) if provider_status in {"failed", "cancelled"} else None
-        usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
+        usage = (
+            task.get("usage")
+            if isinstance(task.get("usage"), dict)
+            else data.get("usage")
+            if isinstance(data.get("usage"), dict)
+            else None
+        )
         return H3QueryResult(
-            task_id=str(task.get("task_id") or task_id),
+            task_id=str(task.get("task_id") or task.get("id") or task_id),
             status=provider_status,
             output_url=output_url,
             error=error,
@@ -220,7 +227,7 @@ class MiniMaxH3Client:
             _extract_error_message(payload) or f"MiniMax H3 HTTP {status}",
             status_code=status,
             error_code=_find_first_string(payload, "code", "error_code"),
-            retryable=status in {429, 500},
+            retryable=status == 429 or status >= 500,
             submission_may_have_succeeded=False,
         )
 
