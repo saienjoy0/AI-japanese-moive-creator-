@@ -323,6 +323,7 @@ def test_h3_client_and_executor_resume_without_duplicate_post(tmp_path: Path) ->
         segment_id="segment_001",
         estimated_cost_usd=Decimal("0.64"),
         max_cost_usd=Decimal("1.00"),
+        approval_verified=True,
         output_path=tmp_path / "segment.mp4",
     )
     assert output.exists()
@@ -335,6 +336,7 @@ def test_h3_client_and_executor_resume_without_duplicate_post(tmp_path: Path) ->
         segment_id="segment_001",
         estimated_cost_usd=Decimal("0.64"),
         max_cost_usd=Decimal("1.00"),
+        approval_verified=True,
         output_path=tmp_path / "segment.mp4",
         resume_only=True,
     )
@@ -362,6 +364,7 @@ def test_persisted_submitting_state_becomes_unknown_without_post(tmp_path: Path)
         ],
         estimated_cost_usd=Decimal("0.64"),
         max_cost_usd=Decimal("1.00"),
+        price_snapshot_id="minimax-h3-2026-08-05",
     )
     executor.ledger_store.write(record)
 
@@ -371,6 +374,7 @@ def test_persisted_submitting_state_becomes_unknown_without_post(tmp_path: Path)
             segment_id="segment_001",
             estimated_cost_usd=Decimal("0.64"),
             max_cost_usd=Decimal("1.00"),
+            approval_verified=True,
             output_path=tmp_path / "segment.mp4",
         )
     assert transport.calls == []
@@ -401,6 +405,7 @@ def test_submission_unknown_blocks_a_second_post(tmp_path: Path) -> None:
             segment_id="segment_001",
             estimated_cost_usd=Decimal("0.64"),
             max_cost_usd=Decimal("1.00"),
+            approval_verified=True,
             output_path=tmp_path / "segment.mp4",
         )
     with pytest.raises(MiniMaxH3ExecutionError, match="refusing a second POST"):
@@ -409,6 +414,7 @@ def test_submission_unknown_blocks_a_second_post(tmp_path: Path) -> None:
             segment_id="segment_001",
             estimated_cost_usd=Decimal("0.64"),
             max_cost_usd=Decimal("1.00"),
+            approval_verified=True,
             output_path=tmp_path / "segment.mp4",
         )
 
@@ -420,8 +426,9 @@ def test_budget_and_pending_asset_preflight_block_before_post(tmp_path: Path) ->
         executor.execute(
             prepared,
             segment_id="segment_001",
-            estimated_cost_usd=Decimal("1.01"),
-            max_cost_usd=Decimal("1.00"),
+            estimated_cost_usd=Decimal("0.01"),
+            max_cost_usd=Decimal("0.63"),
+            approval_verified=True,
             output_path=tmp_path / "segment.mp4",
         )
     assert transport.calls == []
@@ -437,6 +444,7 @@ def test_budget_and_pending_asset_preflight_block_before_post(tmp_path: Path) ->
             segment_id="segment_001",
             estimated_cost_usd=Decimal("0.64"),
             max_cost_usd=Decimal("1.00"),
+            approval_verified=True,
             output_path=tmp_path / "segment.mp4",
         )
     assert transport.calls == []
@@ -455,6 +463,7 @@ def test_poll_and_download_retry_limits_are_used(tmp_path: Path) -> None:
         segment_id="segment_001",
         estimated_cost_usd=Decimal("0.64"),
         max_cost_usd=Decimal("1.00"),
+        approval_verified=True,
         output_path=tmp_path / "segment.mp4",
     )
     assert output.exists()

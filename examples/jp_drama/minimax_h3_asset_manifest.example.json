@@ -1,0 +1,15 @@
+{
+  "segment_id": "replace-with-generation-segment-id",
+  "assets": [
+    {
+      "asset_id": "replace-with-reference-asset-id",
+      "url": "https://public-object-storage.example/reference.png",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "size_bytes": 1024,
+      "aspect_ratio": 0.5625,
+      "width_px": 720,
+      "height_px": 1280,
+      "media_format": "png"
+    }
+  ]
+}

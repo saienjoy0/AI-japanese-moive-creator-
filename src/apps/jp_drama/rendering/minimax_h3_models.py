@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -105,11 +107,7 @@ class H3VideoGenerationRequest(H3Model):
         text_items = [item for item in self.content if item.type == "text"]
         if len(text_items) != 1:
             raise ValueError("H3 requires exactly one non-empty text content item")
-        roles = [
-            item.effective_role
-            for item in self.content
-            if item.effective_role is not None
-        ]
+        roles = [item.effective_role for item in self.content if item.effective_role is not None]
         frame_roles = {role for role in roles if role in {"first_frame", "last_frame"}}
         reference_roles = {
             role
@@ -136,11 +134,7 @@ class H3VideoGenerationRequest(H3Model):
 
     @property
     def mode(self) -> Literal["text", "first_frame", "reference"]:
-        roles = {
-            item.effective_role
-            for item in self.content
-            if item.effective_role is not None
-        }
+        roles = {item.effective_role for item in self.content if item.effective_role is not None}
         if roles & {"first_frame", "last_frame"}:
             return "first_frame"
         if roles:
@@ -190,13 +184,17 @@ class H3ReferenceBundle(H3Model):
             if item.role == "reference_video"
         )
 
+    @property
+    def billable_image_count(self) -> int:
+        return sum(item.kind == "image" for item in self.assets)
+
     def preflight_errors(self, *, max_request_bytes: int = 64 * 1024 * 1024) -> list[str]:
         errors: list[str] = []
         known_sizes = [item.size_bytes for item in self.assets if item.size_bytes is not None]
         if len(known_sizes) != len(self.assets):
             errors.append("reference asset size metadata is incomplete")
         if sum(known_sizes) > max_request_bytes:
-            errors.append("request exceeds 64MB")
+            errors.append(f"request exceeds {max_request_bytes} bytes")
         reference_images = [item for item in self.assets if item.role == "reference_image"]
         videos = [item for item in self.assets if item.role == "reference_video"]
         audios = [item for item in self.assets if item.role == "reference_audio"]
@@ -212,8 +210,9 @@ class H3ReferenceBundle(H3Model):
             errors.append("reference audio duration exceeds 15 seconds")
 
         for item in self.assets:
-            if item.url.startswith("pending://"):
-                errors.append(f"{item.asset_id} still uses pending://")
+            url_error = _public_https_error(item.url)
+            if url_error:
+                errors.append(f"{item.asset_id} {url_error}")
             if item.sha256 is None:
                 errors.append(f"{item.asset_id} is missing sha256")
             if item.size_bytes is not None:
@@ -227,10 +226,7 @@ class H3ReferenceBundle(H3Model):
             if item.kind in {"image", "video"}:
                 if item.width_px is None or item.height_px is None:
                     errors.append(f"{item.asset_id} is missing dimensions")
-                elif not (
-                    256 <= item.width_px <= 5760
-                    and 256 <= item.height_px <= 5760
-                ):
+                elif not (256 <= item.width_px <= 5760 and 256 <= item.height_px <= 5760):
                     errors.append(f"{item.asset_id} dimensions are outside 256-5760")
                 if item.aspect_ratio is None:
                     errors.append(f"{item.asset_id} is missing aspect_ratio")
@@ -238,12 +234,7 @@ class H3ReferenceBundle(H3Model):
                     errors.append(f"{item.asset_id} aspect ratio is outside 0.4-2.5")
             if item.kind == "image":
                 if (item.media_format or "").lower() not in {
-                    "jpg",
-                    "jpeg",
-                    "png",
-                    "webp",
-                    "heic",
-                    "heif",
+                    "jpg", "jpeg", "png", "webp", "heic", "heif"
                 }:
                     errors.append(f"{item.asset_id} image format is unsupported")
             if item.kind == "video":
@@ -255,13 +246,10 @@ class H3ReferenceBundle(H3Model):
                     errors.append(f"{item.asset_id} FPS is outside 23.976-60")
                 if (item.media_format or "").lower() not in {"mp4", "mov"}:
                     errors.append(f"{item.asset_id} video format is unsupported")
-                if item.codec and item.codec.lower() not in {
-                    "h264",
-                    "h.264",
-                    "avc",
-                    "h265",
-                    "h.265",
-                    "hevc",
+                if not item.codec:
+                    errors.append(f"{item.asset_id} is missing video codec")
+                elif item.codec.lower() not in {
+                    "h264", "h.264", "avc", "avc1", "h265", "h.265", "hevc", "hev1"
                 }:
                     errors.append(f"{item.asset_id} video codec is unsupported")
             if item.kind == "audio":
@@ -284,10 +272,6 @@ class H3SubmitResult(H3Model):
     request_id: str | None = None
 
 
-class H3Usage(H3Model):
-    data: dict[str, Any] = Field(default_factory=dict)
-
-
 class H3QueryResult(H3Model):
     task_id: str = Field(min_length=1)
     status: H3Status
@@ -300,3 +284,23 @@ class H3QueryResult(H3Model):
         if self.status == "succeeded" and not self.output_url:
             raise ValueError("succeeded H3 task requires output_url")
         return self
+
+
+def _public_https_error(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.scheme == "pending":
+        return "still uses pending://"
+    if parsed.scheme != "https":
+        return "must use a public https URL"
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if not host:
+        return "has no hostname"
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        return "must not use localhost or a local hostname"
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if not address.is_global:
+        return "must not use a private, loopback, link-local, or reserved IP"
+    return None

@@ -71,6 +71,50 @@ class UrllibMiniMaxH3Transport:
                 submission_may_have_succeeded=method.upper() == "POST",
             ) from exc
 
+    def download_to(
+        self,
+        url: str,
+        destination: Path,
+        *,
+        headers: dict[str, str],
+        timeout_seconds: int,
+        chunk_size: int = 1024 * 1024,
+    ) -> Path:
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
+        )
+        try:
+            try:
+                response = urllib.request.urlopen(request, timeout=timeout_seconds)
+            except urllib.error.HTTPError as exc:
+                body = exc.read()
+                raise _http_error_from_payload(exc.code, body) from exc
+            except Exception as exc:
+                raise MiniMaxH3ClientError(
+                    f"MiniMax H3 download transport failed: {exc}", retryable=True
+                ) from exc
+            with response, os.fdopen(fd, "wb") as handle:
+                fd = -1
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if os.path.getsize(temp_name) == 0:
+                raise MiniMaxH3ClientError(
+                    "MiniMax H3 download returned an empty body", retryable=True
+                )
+            os.replace(temp_name, destination)
+            return destination
+        finally:
+            if fd >= 0:
+                os.close(fd)
+            if os.path.exists(temp_name):
+                os.unlink(temp_name)
+
 
 class MiniMaxH3Client:
     def __init__(
@@ -92,24 +136,43 @@ class MiniMaxH3Client:
             "Accept": "application/json",
         }
 
+    def require_credentials(self) -> None:
+        """Validate credentials without performing an external API call."""
+        self._headers()
+
     def submit(self, request: H3VideoGenerationRequest) -> H3SubmitResult:
         payload = request.model_dump(mode="json", exclude_none=True)
-        status, headers, body = self.transport.request(
-            "POST",
-            self.config.submit_url,
-            headers=self._headers(),
-            body=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
-            timeout_seconds=self.config.request_timeout_seconds,
-        )
-        data = self._decode_response(status, body)
-        task_id = _find_first_string(data, "task_id", "id")
+        try:
+            status, headers, body = self.transport.request(
+                "POST",
+                self.config.submit_url,
+                headers=self._headers(),
+                body=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+                timeout_seconds=self.config.request_timeout_seconds,
+            )
+            data = self._decode_response(status, body)
+        except MiniMaxH3ClientError as exc:
+            ambiguous = (
+                exc.submission_may_have_succeeded
+                or exc.status_code in {408, 429}
+                or (exc.status_code is not None and exc.status_code >= 500)
+                or exc.status_code is None
+            )
+            raise MiniMaxH3ClientError(
+                str(exc),
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                retryable=exc.retryable,
+                submission_may_have_succeeded=ambiguous,
+            ) from exc
+        task_id = _strict_submit_task_id(data)
         if not task_id:
             raise MiniMaxH3ClientError(
-                "MiniMax H3 submit response did not contain task_id",
+                "MiniMax H3 submit response did not contain task_id at an approved path",
                 status_code=status,
                 submission_may_have_succeeded=True,
             )
-        request_id = headers.get("x-request-id") or _find_first_string(data, "request_id")
+        request_id = headers.get("x-request-id") or _direct_string(data, "request_id")
         return H3SubmitResult(task_id=task_id, request_id=request_id)
 
     def query(self, task_id: str) -> H3QueryResult:
@@ -158,8 +221,9 @@ class MiniMaxH3Client:
             if isinstance(data.get("usage"), dict)
             else None
         )
+        response_task_id = str(task.get("task_id") or task.get("id") or task_id)
         return H3QueryResult(
-            task_id=str(task.get("task_id") or task.get("id") or task_id),
+            task_id=response_task_id,
             status=provider_status,
             output_url=output_url,
             error=error,
@@ -167,6 +231,16 @@ class MiniMaxH3Client:
         )
 
     def download(self, url: str, destination: str | Path) -> Path:
+        path = Path(destination).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        streaming = getattr(self.transport, "download_to", None)
+        if callable(streaming):
+            return streaming(
+                url,
+                path,
+                headers={"Accept": "video/mp4"},
+                timeout_seconds=self.config.download_timeout_seconds,
+            )
         status, _, body = self.transport.request(
             "GET",
             url,
@@ -178,10 +252,8 @@ class MiniMaxH3Client:
             raise self._http_error(status, body)
         if not body:
             raise MiniMaxH3ClientError("MiniMax H3 download returned an empty body", retryable=True)
-        path = Path(destination).resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp_name = tempfile.mkstemp(
-            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            prefix=f".{path.name}.", suffix=".part", dir=path.parent
         )
         try:
             with os.fdopen(fd, "wb") as handle:
@@ -206,7 +278,9 @@ class MiniMaxH3Client:
         if not 200 <= status < 300:
             raise self._http_error(status, body, data=data)
         if not isinstance(data, dict):
-            raise MiniMaxH3ClientError("MiniMax H3 response must be a JSON object")
+            raise MiniMaxH3ClientError(
+                "MiniMax H3 response must be a JSON object", status_code=status
+            )
         return data
 
     def _http_error(
@@ -227,9 +301,26 @@ class MiniMaxH3Client:
             _extract_error_message(payload) or f"MiniMax H3 HTTP {status}",
             status_code=status,
             error_code=_find_first_string(payload, "code", "error_code"),
-            retryable=status == 429 or status >= 500,
+            retryable=status in {408, 429} or status >= 500,
             submission_may_have_succeeded=False,
         )
+
+
+def _strict_submit_task_id(data: dict[str, Any]) -> str | None:
+    direct = _direct_string(data, "task_id")
+    if direct:
+        return direct
+    task = data.get("task")
+    if isinstance(task, dict):
+        return _direct_string(task, "task_id") or _direct_string(task, "id")
+    return None
+
+
+def _direct_string(data: dict[str, Any], key: str) -> str | None:
+    value = data.get(key)
+    if isinstance(value, (str, int)) and str(value).strip():
+        return str(value)
+    return None
 
 
 def _find_first_string(data: Any, *keys: str) -> str | None:
@@ -252,3 +343,17 @@ def _find_first_string(data: Any, *keys: str) -> str | None:
 
 def _extract_error_message(data: Any) -> str | None:
     return _find_first_string(data, "message", "error_message", "detail")
+
+
+def _http_error_from_payload(status: int, body: bytes) -> MiniMaxH3ClientError:
+    try:
+        decoded = json.loads(body.decode("utf-8")) if body else {}
+        payload = decoded if isinstance(decoded, dict) else {}
+    except Exception:
+        payload = {}
+    return MiniMaxH3ClientError(
+        _extract_error_message(payload) or f"MiniMax H3 HTTP {status}",
+        status_code=status,
+        error_code=_find_first_string(payload, "code", "error_code"),
+        retryable=status in {408, 429} or status >= 500,
+    )
