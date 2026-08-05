@@ -11,6 +11,7 @@ on:
       - "examples/jp_drama/minimax_h3_live_provider.json"
       - "examples/jp_drama/generation/minimax_h3_profile.json"
       - "tests/test_jp_drama_minimax_h3_core.py"
+      - "docs/pr14-minimax-h3-provider-core.md"
       - ".github/workflows/jp-drama-minimax-h3-core.yml"
   push:
     branches: [main, "feature/**", "fix/**"]
@@ -22,6 +23,7 @@ on:
       - "examples/jp_drama/minimax_h3_live_provider.json"
       - "examples/jp_drama/generation/minimax_h3_profile.json"
       - "tests/test_jp_drama_minimax_h3_core.py"
+      - "docs/pr14-minimax-h3-provider-core.md"
       - ".github/workflows/jp-drama-minimax-h3-core.yml"
   workflow_dispatch:
 
