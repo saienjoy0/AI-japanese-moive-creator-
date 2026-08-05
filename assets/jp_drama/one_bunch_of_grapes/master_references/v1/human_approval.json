@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0",
+  "approval_id": "one-bunch-master-references-v1-human-approval",
+  "project_id": "hitofusa-no-budou-three-episode",
+  "asset_set_id": "one-bunch-master-references-v1",
+  "decision": "approved",
+  "scope": "master_reference_images_only",
+  "approved_by": "saienjoy0",
+  "approved_at": "2026-08-05T23:20:00+09:00",
+  "evidence": "Project owner confirmed visual review of all generated images in the AI動画 project conversation.",
+  "asset_count": 17,
+  "assets": [
+    {
+      "source_asset_id": "C01",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C01_boku.png",
+      "sha256": "ad79e1aa803ac3ae059b3f70f1293fe6c3e01c0fb178a93991193f601628455c",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:C01"
+    },
+    {
+      "source_asset_id": "C02",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C02_jim.png",
+      "sha256": "74beff4a8a9a8e86000324d64ce3328460812c7e4df1548859650983c458e9c7",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:C02"
+    },
+    {
+      "source_asset_id": "C03",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C03_teacher.png",
+      "sha256": "d474304447a797346f9f2153cdddcbcfdc7c68f7c45e8cd1e03654ad211176b6",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:C03"
+    },
+    {
+      "source_asset_id": "C90",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C90_background_classmates.png",
+      "sha256": "d2fb350ba579d46c22002ce635c2b8756e61e92027b2e3f5624cfc8a76e6fe6d",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:C90"
+    },
+    {
+      "source_asset_id": "C91",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C91_reporting_classmate.png",
+      "sha256": "50f7e262db04aeb6d63b044a2f6ff60463666a7bbde6bb526b68f3ad7ff9d68e",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:C91"
+    },
+    {
+      "source_asset_id": "P01",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P01_imported_wooden_12_color_paint_box.png",
+      "sha256": "aa674d0aaffd7df81d30acf4b45ffa3ade373a5a805fe193786cdc1874fe52eb",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P01"
+    },
+    {
+      "source_asset_id": "P02",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P02_indigo_and_magenta_solid_paints.png",
+      "sha256": "6eabbf5c85fcb0aea786d0200f1340d3e8bd4d3b6ff8b64a0a4ec60d89c46e20",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P02"
+    },
+    {
+      "source_asset_id": "P03",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P03_unfinished_harbor_watercolor.png",
+      "sha256": "839fc1e6520f89990b59e170600a09c5934b096365df6a1799acbeef873450cc",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P03"
+    },
+    {
+      "source_asset_id": "P04",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P04_cheap_worn_watercolor_set.png",
+      "sha256": "677ff40bceef709f5a92a45f6fc1af83abab3c9a435f30068effca5d78961e55",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P04"
+    },
+    {
+      "source_asset_id": "P05",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P05_one_bunch_of_grapes.png",
+      "sha256": "e324857b4a9213c709e581e9ab458d1a712d92f5b374b439c56acde0de37de4f",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P05"
+    },
+    {
+      "source_asset_id": "P06",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P06_small_silver_scissors.png",
+      "sha256": "d70fd0c622e75ab331a2db63f55679b62274a326527bf2af2beea91ccbde5bbd",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P06"
+    },
+    {
+      "source_asset_id": "P07",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P07_brown_leather_school_satchel.png",
+      "sha256": "a29390aa2d3a3ffa2e3f69b1fc3e3e19e10446e4764a1b9cc9aeadb62199bda1",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:P07"
+    },
+    {
+      "source_asset_id": "S01",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S01_classroom.png",
+      "sha256": "143f010a5a811301e31f4f0c9f22c8c9869bb099019dae855c61d18eaf71963a",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:S01"
+    },
+    {
+      "source_asset_id": "S02",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S02_school_corridor.png",
+      "sha256": "68fae03059f001c43aadcf024b0b6efe29af1bec6240f10d4ba586b6a438e9e4",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:S02"
+    },
+    {
+      "source_asset_id": "S03",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S03_teacher_room.png",
+      "sha256": "854e31c8b303441f6b35abff49148e14229f52c0cbb6f1ab53a998d139369dc5",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:S03"
+    },
+    {
+      "source_asset_id": "S04",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S04_school_gate.png",
+      "sha256": "457cd9749bb94c5b40c08e8c93b6623c2bb1102280415a02a5f5c0ea2578dcda",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:S04"
+    },
+    {
+      "source_asset_id": "S05",
+      "path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S05_yokohama_harbor_memory.png",
+      "sha256": "6d5928e250a0dc9e7476378a50ed83c1c393f1df61e26de95e672539250779d6",
+      "width": 941,
+      "height": 1672,
+      "format": "PNG",
+      "generated_by": "openai/image-generation",
+      "operation_id": "human-approved:one-bunch-master-references-v1-human-approval:S05"
+    }
+  ],
+  "voice_identity_status": "pending",
+  "first_frame_status": "pending",
+  "instance_decisions": {
+    "P05": "The visual master is approved as the species/style reference. E02 and E03 must still use distinct in-story bunch instances."
+  }
+}
