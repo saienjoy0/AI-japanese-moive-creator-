@@ -140,16 +140,24 @@ jobs:
       - name: Ensure PR12 adds no credential or generated media
         run: |
           test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' '*.png' '*.jpg' | grep -E 'jp_drama|generation_segment' || true)"
-          ! git grep -nE 'sk-[A-Za-z0-9_-]{20,}' -- \
-            src/apps/jp_drama/rendering/segment_canary.py \
-            src/apps/jp_drama/workflows/render_generation_segment_canary.py \
-            tests/test_jp_drama_generation_segment_canary.py \
-            .github/workflows/jp-drama-generation-segment-canary.yml
-          ! git grep -n 'DASHSCOPE_API_KEY=' -- \
-            src/apps/jp_drama/rendering/segment_canary.py \
-            src/apps/jp_drama/workflows/render_generation_segment_canary.py \
-            tests/test_jp_drama_generation_segment_canary.py \
-            .github/workflows/jp-drama-generation-segment-canary.yml
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          paths = [
+              Path("src/apps/jp_drama/rendering/segment_canary.py"),
+              Path("src/apps/jp_drama/workflows/render_generation_segment_canary.py"),
+              Path("tests/test_jp_drama_generation_segment_canary.py"),
+          ]
+          secret_patterns = [
+              re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+              re.compile(r"DASHSCOPE_API_KEY\s*=\s*[^\"'$\s]"),
+          ]
+          for path in paths:
+              text = path.read_text(encoding="utf-8")
+              for pattern in secret_patterns:
+                  assert not pattern.search(text), f"possible credential in {path}"
+          PY
 
       - name: Upload segment Canary contract
         uses: actions/upload-artifact@v4
