@@ -36,6 +36,22 @@ Multiple committed operations for the same segment/component are rejected becaus
 
 TTS is no longer an unknown GenerationPlan component at the paid boundary. The execution budget calculates exact estimated CNY from the current provider price per 10,000 characters and the actual segment dialogue text length.
 
+## Canary integration
+
+The official `render_generation_segment_canary` workflow now uses the same `ExecutionBudgetPlan` as the full-episode planning CLI.
+
+Before delegation it records:
+
+- `execution_budget_before`
+- deterministic budget digest
+- committed calls and cost from the persistent Provider Ledger
+- remaining calls and cost
+- total exposure and hard limits
+
+After delegation it reloads the same ledger and records `execution_budget_after`. A newly submitted keyframe, video, or TTS operation therefore moves from remaining exposure to committed exposure without changing the immutable total lifecycle estimate.
+
+The default ledger path is deterministic per output and Segment. Explicit ledger paths remain supported. Asset readiness, first-frame approval, character voice mapping, and provider-environment checks stay in front of paid submission.
+
 ## Hard gates
 
 Payment is approved only when:
@@ -53,3 +69,8 @@ The draft EpisodePackage JPY budget is not used for provider submission authoriz
 - no automatic fallback provider is included
 - ledgers remain immutable records of already consumed submissions
 - CI uses fixture plans and synthetic ledger records only
+- CI contains no provider credential and makes zero paid calls
+
+## Final validation trigger
+
+This documentation update intentionally retriggers PR and branch workflows after the Canary integration commit so the final head is validated rather than relying on the earlier budget-only run.
