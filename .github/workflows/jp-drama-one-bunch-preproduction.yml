@@ -132,8 +132,16 @@ jobs:
           assert len(frames) == 15
           assert len(routes) == 9
           assert len(commands) == 9
-          assert canary["recommendation_ready"] is True
-          assert canary["recommended_episode_id"] == "E01"
+          assert canary["recommendation_ready"] is False
+          assert canary["recommended_episode_id"] is None
+          assert canary["recommended_segment_id"] is None
+          assert all(
+              all(
+                  "provider_duration_exceeded" in rejected["reason_codes"]
+                  for rejected in decision["rejected_segments"]
+              )
+              for decision in canary["episode_decisions"]
+          )
           assert len(list((root / "approval_templates").rglob("bindings.template.json"))) == 9
           assert len(list((root / "production_contract").rglob("generation_plan_episode.json"))) == 9
           assert len(list((root / "production_contract").rglob("asset_bundle_pending.json"))) == 9
