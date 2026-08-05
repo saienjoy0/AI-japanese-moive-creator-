@@ -1,5 +1,15 @@
-"""Seedance2 Storyboard Generator compatibility layer."""
+"""Seedance2 Storyboard Generator compatibility and production bridge."""
 
+from .bridge import (
+    STORYBOARD_BRIDGE_VERSION,
+    SUPPORTED_ROUTES,
+    SeedanceStoryboardBridgeError,
+)
+from .bridge_contract import (
+    build_storyboard_asset_bundle,
+    build_storyboard_prepared_episode,
+    compile_storyboard_generation_plan,
+)
 from .models import (
     SEEDANCE_STORYBOARD_SCHEMA_VERSION,
     SeedanceStoryboardEpisode,
@@ -30,10 +40,13 @@ from .sync import (
 
 __all__ = [
     "SEEDANCE_STORYBOARD_SCHEMA_VERSION",
+    "STORYBOARD_BRIDGE_VERSION",
+    "SUPPORTED_ROUTES",
     "UPSTREAM_COMMIT",
     "UPSTREAM_FILES",
     "UPSTREAM_REPOSITORY",
     "ProjectMarkdown",
+    "SeedanceStoryboardBridgeError",
     "SeedanceStoryboardEpisode",
     "SeedanceStoryboardPackage",
     "SeedanceStoryboardParseError",
@@ -43,6 +56,9 @@ __all__ = [
     "UploadSlot",
     "UpstreamProvenance",
     "UpstreamSyncError",
+    "build_storyboard_asset_bundle",
+    "build_storyboard_prepared_episode",
+    "compile_storyboard_generation_plan",
     "git_blob_sha",
     "load_project_directory",
     "parse_asset_catalog",
