@@ -1,6 +1,6 @@
 """Adaptive generation segmentation for Japanese short dramas."""
 
-from .compiler_facade import (
+from .compiler import (
     GenerationCompilationError,
     compile_generation_plan,
     segment_to_generation_spec,
