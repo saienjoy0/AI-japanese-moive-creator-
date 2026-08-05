@@ -32,6 +32,13 @@
 | S04 | 学校の校門 | `scenes/S04_school_gate.png` | 941×1672 | pending |
 | S05 | 横浜港の記憶 | `scenes/S05_yokohama_harbor_memory.png` | 941×1672 | pending |
 
+## 検証
+
+- 返送ZIP内の17枚とGitHub上の各PNGについてGit blob SHAを照合し、全件一致を確認済み
+- `manifest.json`記載のSHA-256と画像実体が全件一致
+- 全画像の実寸が941×1672であることを確認済み
+- `asset_path_map.json`の17パスが実在ファイルと一致
+
 ## 重要
 
 - P05「一房の葡萄」は種類・外観の基準候補です。E02とE03では別個体として扱うルールを維持してください。
