@@ -93,6 +93,9 @@ static/output/
 output/
 static/
 
+# Pinned external creative Skills (fetched locally, never committed)
+.local/upstream/
+
 # Internal development tools (not for public repo)
 .agent/
 .claude/
