@@ -153,6 +153,8 @@ def test_selector_rejects_multi_shot_and_selects_single_shot() -> None:
     )
     assert len(selected.editorial_shots) == 1
     assert selected.provider_route_id == "wan/i2v"
+    assert selected.audio_strategy == "silent"
+    assert not selected.dialogue_slices
     rejected_multi = [
         item
         for item in decision.rejected_segments
@@ -184,6 +186,7 @@ def test_materialized_canary_rebuilds_exact_mapping_trace() -> None:
     frame = materialized.storyboard_frame_drafts[0]
     assert frame.source_shot_id == segment.segment_id
     assert frame.duration_seconds == segment.requested_duration_seconds
+    assert frame.dialogue_cues == []
     assert materialized.mapping_trace.mapping_coverage == 1.0
     assert len(materialized.mapping_trace.shots) == 1
     assert materialized.mapping_trace.shots[0].source_id == segment.segment_id
@@ -191,6 +194,14 @@ def test_materialized_canary_rebuilds_exact_mapping_trace() -> None:
     assert {node.shot_id for node in materialized.render_graph.nodes} == {
         segment.segment_id
     }
+    assert [node.task_type for node in materialized.render_graph.nodes] == [
+        "generate_video",
+        "finalize_shot",
+    ]
+    assert materialized.render_intents[0].tasks == [
+        "generate_video",
+        "finalize_shot",
+    ]
     assert PreparedEpisode.model_validate_json(materialized.to_canonical_json())
 
 
@@ -250,6 +261,10 @@ def test_cli_auto_preflight_makes_zero_paid_calls(tmp_path: Path) -> None:
     assert report["generation_plan_digest"] == plan.content_digest
     assert report["editorial_shot_count"] == 1
     assert report["execution_mode"] == "single_shot"
+    assert report["planned_keyframe_calls"] == 1
+    assert report["planned_render_calls"] == 1
+    assert report["planned_api_calls"] == 2
+    assert report["execution_budget"]["unknown_components"] == []
     assert report["external_api_calls"] == 0
     assert report["credentials_present"] is False
     assert report["within_requested_call_limit"] is True
