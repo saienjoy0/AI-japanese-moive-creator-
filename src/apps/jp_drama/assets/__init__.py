@@ -1,4 +1,4 @@
-"""Approved asset, voice identity, and H3 publication support."""
+"""Approved asset, voice identity, H3 publication, and Wan references."""
 
 from .bundle import (
     AssetBundleError,
@@ -29,10 +29,26 @@ from .publication import (
     materialize_h3_canary_asset_manifest,
     publish_h3_assets,
 )
+from .wan_first_frame import (
+    WanFirstFrameError,
+    register_wan_first_frame,
+    verify_wan_first_frame_ready,
+)
+from .wan_references import (
+    WAN_MASTER_REFERENCE_SCHEMA_VERSION,
+    WanMasterReference,
+    WanMasterReferenceError,
+    WanMasterReferenceManifest,
+    build_wan_master_reference_manifest,
+    load_wan_master_reference_manifest,
+    verify_wan_master_reference_manifest,
+    write_wan_master_reference_manifest,
+)
 
 __all__ = [
     "ASSET_BUNDLE_SCHEMA_VERSION",
     "H3_ASSET_PUBLICATION_SCHEMA_VERSION",
+    "WAN_MASTER_REFERENCE_SCHEMA_VERSION",
     "ApprovedAssetBundle",
     "ApprovedReferenceAsset",
     "AssetBundleError",
@@ -44,14 +60,24 @@ __all__ = [
     "OSSH3AssetPublisher",
     "PublishedH3Asset",
     "VoiceIdentityProfile",
+    "WanFirstFrameError",
+    "WanMasterReference",
+    "WanMasterReferenceError",
+    "WanMasterReferenceManifest",
     "apply_asset_approvals",
     "assess_asset_readiness",
     "build_h3_asset_publication_preflight",
     "build_pending_asset_bundle",
+    "build_wan_master_reference_manifest",
     "load_bindings",
     "load_bundle",
+    "load_wan_master_reference_manifest",
     "materialize_h3_canary_asset_manifest",
     "prepared_content_digest",
     "publish_h3_assets",
+    "register_wan_first_frame",
+    "verify_wan_first_frame_ready",
+    "verify_wan_master_reference_manifest",
     "write_bundle",
+    "write_wan_master_reference_manifest",
 ]
