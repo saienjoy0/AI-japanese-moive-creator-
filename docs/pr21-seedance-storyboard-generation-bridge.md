@@ -86,17 +86,22 @@ Each generated pending bundle is bound to both:
 - the provider-specific `GenerationPlanEpisode` digest.
 
 Changing the storyboard package, plan, or approved file therefore invalidates
-readiness through the existing gates.
+readiness through the existing gates. Continuity contracts are rebuilt by the
+actual location-based continuity group rather than collapsing unrelated scenes
+into one group.
 
 ## Continuation boundary
 
 The upstream `将@视频1延长15s` instruction is retained in the raw prompt and
-mapped to `transition_in=continuation` plus an explicit readiness warning.
+mapped to `transition_in=continuation`.
 
 This PR does not weaken the current approved-asset schema by pretending that a
 previous video is an image master. A later focused extension must add a
-hash-bound approved video-reference role before continuation can be submitted
-automatically. Until then the instruction remains visible and cannot be lost.
+hash-bound approved video-reference role before continuation can be submitted.
+Until then every continuation plan receives
+`continuation_reference_not_bound`, and `execution_route_ready=false` for H3,
+Wan, and Seedance. The creative instruction remains visible while paid or manual
+submission is blocked.
 
 ## CLI
 
@@ -132,7 +137,9 @@ seedance-storyboard-production/
 
 The complete directory is staged and then published as one replacement. The
 same package, episode, route, and configuration produce deterministic IDs and
-digests.
+digests. `bridge_report.json` records the PreparedEpisode digest, plan digest,
+Asset Bundle digest, route readiness, error codes, segment counts, and zero
+provider calls.
 
 ## Safety
 
@@ -143,6 +150,7 @@ digests.
 - provider cost estimates use existing dated configurations only;
 - Seedance remains manual;
 - fallback execution remains disabled;
+- continuation is blocked until an approved previous-video contract exists;
 - media quality remains `false` until a separately approved Canary.
 
 ## Completion evidence
@@ -153,7 +161,8 @@ The existing two-episode fixture must prove:
 - Wan: five single-shot segments and five first-frame requirements;
 - Seedance: one manual operator segment retaining the full raw prompt;
 - C01, C02, S01, and the episode prop become pending approved masters;
-- E02 continuation text and transition survive;
+- E01 is route-ready for all three planning routes;
+- E02 continuation text and transition survive but all routes remain blocked;
 - all artifacts bind to source and plan digests;
 - external provider calls remain zero.
 
