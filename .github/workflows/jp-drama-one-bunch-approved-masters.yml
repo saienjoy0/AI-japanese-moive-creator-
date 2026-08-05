@@ -1,0 +1,163 @@
+name: Japanese Drama One Bunch Approved Masters
+
+on:
+  pull_request:
+    paths:
+      - "assets/jp_drama/one_bunch_of_grapes/master_references/**"
+      - "src/apps/jp_drama/workflows/apply_master_reference_approval.py"
+      - "tests/test_jp_drama_apply_master_reference_approval.py"
+      - ".github/workflows/jp-drama-one-bunch-approved-masters.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+      - "assets/**"
+    paths:
+      - "assets/jp_drama/one_bunch_of_grapes/master_references/**"
+      - "src/apps/jp_drama/workflows/apply_master_reference_approval.py"
+      - "tests/test_jp_drama_apply_master_reference_approval.py"
+      - ".github/workflows/jp-drama-one-bunch-approved-masters.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  approved-masters:
+    name: Verify and bind human-approved 一房の葡萄 masters
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout AI movie creator
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Storyboard source
+        uses: actions/checkout@v4
+        with:
+          repository: saienjoy0/Storyboard-Generator
+          ref: 3070100f6ff25a3994a749b240f423f703cd294f
+          path: storyboard-source
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<10"
+
+      - name: Compile approval workflow
+        run: |
+          python -m compileall -q \
+            src/apps/jp_drama/workflows/apply_master_reference_approval.py
+
+      - name: Run focused approval tests
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_apply_master_reference_approval.py
+
+      - name: Import pinned production contract
+        run: |
+          rm -rf output/one-bunch-series output/one-bunch-preproduction
+          python -m src.apps.jp_drama.workflows.import_series_production_plan \
+            --series-plan "storyboard-source/projects/一房の葡萄/一房の葡萄_generation_plan.yaml" \
+            --asset-catalog "storyboard-source/projects/一房の葡萄/一房の葡萄_asset_catalog.yaml" \
+            --output-dir output/one-bunch-series \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json \
+            --minimax-h3-config examples/jp_drama/minimax_h3_live_provider.json \
+            --source-commit 3070100f6ff25a3994a749b240f423f703cd294f \
+            --require-route-ready
+
+      - name: Build zero-call preproduction package
+        run: |
+          python -m src.apps.jp_drama.workflows.build_preproduction_package \
+            --series-output output/one-bunch-series \
+            --source-series-plan "storyboard-source/projects/一房の葡萄/一房の葡萄_generation_plan.yaml" \
+            --source-asset-catalog "storyboard-source/projects/一房の葡萄/一房の葡萄_asset_catalog.yaml" \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json \
+            --output-dir output/one-bunch-preproduction \
+            --print-report
+
+      - name: Apply human-approved master images
+        run: |
+          python -m src.apps.jp_drama.workflows.apply_master_reference_approval \
+            --preproduction-root output/one-bunch-preproduction \
+            --approval-manifest assets/jp_drama/one_bunch_of_grapes/master_references/v1/human_approval.json \
+            --repository-root . \
+            --print-report
+
+      - name: Verify approved master bindings and remaining voice gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("output/one-bunch-preproduction")
+          approval = json.loads(
+              (
+                  Path("assets/jp_drama/one_bunch_of_grapes/master_references/v1")
+                  / "human_approval.json"
+              ).read_text(encoding="utf-8")
+          )
+          report = json.loads(
+              (root / "master_asset_approval_report.json").read_text(encoding="utf-8")
+          )
+          commands = json.loads(
+              (root / "bundle_approval_commands.json").read_text(encoding="utf-8")
+          )
+          templates = sorted(
+              (root / "approval_templates").rglob("bindings.template.json")
+          )
+
+          assert approval["decision"] == "approved"
+          assert approval["scope"] == "master_reference_images_only"
+          assert approval["asset_count"] == 17
+          assert len(templates) == 9
+          assert report["valid"] is True
+          assert report["approved_source_asset_count"] == 17
+          assert report["binding_template_count"] == 9
+          assert report["filled_asset_binding_count"] > 0
+          assert report["blank_voice_identity_count"] > 0
+          assert report["voice_identity_status"] == "pending"
+          assert report["external_api_calls"] == 0
+          assert all(
+              item["status"] == "blocked_until_voices_are_filled"
+              for item in commands
+          )
+          for template in templates:
+              payload = json.loads(template.read_text(encoding="utf-8"))
+              assert payload["approved_by"] == approval["approved_by"]
+              assert payload["assets"]
+              assert all(
+                  binding["path"]
+                  for binding in payload["assets"].values()
+              )
+              assert all(
+                  Path(binding["path"]).is_file()
+                  for binding in payload["assets"].values()
+              )
+              assert all(
+                  not voice["voice_id"]
+                  for voice in payload["voices"].values()
+              )
+          PY
+
+      - name: Verify zero provider calls and no copied media
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          test -z "${MINIMAX_API_KEY:-}"
+          test -z "${MULEROUTER_API_KEY:-}"
+          test "$(find output/one-bunch-preproduction -type f \( -name '*.mp4' -o -name '*.mov' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.wav' -o -name '*.mp3' \) | wc -l)" -eq 0
+          grep -q '"external_api_calls": 0' output/one-bunch-preproduction/master_asset_approval_report.json
+
+      - name: Upload bound preproduction evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-bunch-human-approved-master-bindings
+          path: output/one-bunch-preproduction
+          if-no-files-found: error
