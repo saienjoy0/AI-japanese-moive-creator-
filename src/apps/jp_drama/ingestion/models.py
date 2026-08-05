@@ -7,7 +7,17 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-SCRIPT_INGESTION_SCHEMA_VERSION = "1.0.0"
+SCRIPT_INGESTION_SCHEMA_VERSION = "1.1.0"
+
+Identifier = str
+ActionBoundary = Literal[
+    "scene_change",
+    "speaker_change",
+    "action_complete",
+    "reaction",
+    "camera_reframe",
+    "none",
+]
 
 
 class IngestionModel(BaseModel):
@@ -54,6 +64,35 @@ class ScriptSceneDraft(IngestionModel):
     continuity_rules: list[str] = Field(default_factory=list, max_length=20)
 
 
+class ScriptActionBeatDraft(IngestionModel):
+    """One semantic, visually executable action boundary inside a story beat."""
+
+    action_beat_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    )
+    order: int = Field(ge=1, le=30)
+    summary: str = Field(min_length=1, max_length=1000)
+    visual_action: str = Field(min_length=1, max_length=1500)
+    character_ids: list[str] = Field(min_length=1, max_length=12)
+    dialogue_indexes: list[int] = Field(default_factory=list, max_length=6)
+    estimated_duration_seconds: float = Field(ge=0.5, le=15.0)
+    boundary_before: ActionBoundary = "none"
+    boundary_after: ActionBoundary = "action_complete"
+    camera_hint: str | None = Field(default=None, max_length=500)
+    continuity_effects: list[str] = Field(default_factory=list, max_length=20)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_dialogue_indexes(self) -> "ScriptActionBeatDraft":
+        if any(index < 1 for index in self.dialogue_indexes):
+            raise ValueError("action beat dialogue indexes are one-based")
+        if len(self.dialogue_indexes) != len(set(self.dialogue_indexes)):
+            raise ValueError("action beat dialogue indexes must be unique")
+        return self
+
+
 class ScriptBeatDraft(IngestionModel):
     beat_id: str = Field(
         min_length=1,
@@ -70,9 +109,53 @@ class ScriptBeatDraft(IngestionModel):
     action: str = Field(min_length=1, max_length=2000)
     character_ids: list[str] = Field(min_length=1, max_length=12)
     dialogue: list[ScriptDialogueDraft] = Field(default_factory=list, max_length=6)
+    action_beats: list[ScriptActionBeatDraft] = Field(min_length=1, max_length=30)
     camera_hint: str | None = Field(default=None, max_length=500)
     ambience: str | None = Field(default=None, max_length=1000)
     sound_effects: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_action_beats(self) -> "ScriptBeatDraft":
+        action_ids = [item.action_beat_id for item in self.action_beats]
+        if len(action_ids) != len(set(action_ids)):
+            raise ValueError(f"beat {self.beat_id} action beat IDs must be unique")
+        expected_orders = list(range(1, len(self.action_beats) + 1))
+        actual_orders = [item.order for item in self.action_beats]
+        if actual_orders != expected_orders:
+            raise ValueError(
+                f"beat {self.beat_id} action beat order must be contiguous: "
+                f"{expected_orders}"
+            )
+
+        known_characters = set(self.character_ids)
+        assigned_dialogue: list[int] = []
+        for action_beat in self.action_beats:
+            unknown = set(action_beat.character_ids) - known_characters
+            if unknown:
+                raise ValueError(
+                    f"action beat {action_beat.action_beat_id} references characters "
+                    f"outside parent beat: {sorted(unknown)}"
+                )
+            invalid_dialogue = [
+                index
+                for index in action_beat.dialogue_indexes
+                if index > len(self.dialogue)
+            ]
+            if invalid_dialogue:
+                raise ValueError(
+                    f"action beat {action_beat.action_beat_id} references unknown "
+                    f"dialogue indexes: {invalid_dialogue}"
+                )
+            assigned_dialogue.extend(action_beat.dialogue_indexes)
+
+        expected_dialogue = list(range(1, len(self.dialogue) + 1))
+        if sorted(assigned_dialogue) != expected_dialogue:
+            raise ValueError(
+                f"beat {self.beat_id} dialogue must be assigned exactly once to "
+                f"ActionBeats: expected {expected_dialogue}, got "
+                f"{sorted(assigned_dialogue)}"
+            )
+        return self
 
 
 class StructuredScriptDraft(IngestionModel):
@@ -101,6 +184,14 @@ class StructuredScriptDraft(IngestionModel):
         if len(beat_ids) != len(set(beat_ids)):
             raise ValueError("structured script beat IDs must be unique")
 
+        action_beat_ids = [
+            action.action_beat_id
+            for beat in self.beats
+            for action in beat.action_beats
+        ]
+        if len(action_beat_ids) != len(set(action_beat_ids)):
+            raise ValueError("structured script ActionBeat IDs must be globally unique")
+
         expected_orders = list(range(1, len(self.beats) + 1))
         actual_orders = [item.order for item in self.beats]
         if actual_orders != expected_orders:
@@ -128,13 +219,15 @@ class StructuredScriptDraft(IngestionModel):
                         f"present in beat {beat.beat_id}"
                     )
 
-        minimum_beats = int(
-            (self.target_duration_seconds + 19.999999) // 20
+        action_count = sum(len(beat.action_beats) for beat in self.beats)
+        minimum_action_beats = int(
+            (self.target_duration_seconds + 14.999999) // 15
         )
-        if len(self.beats) < minimum_beats:
+        if action_count < minimum_action_beats:
             raise ValueError(
                 f"{self.target_duration_seconds}s requires at least "
-                f"{minimum_beats} beats so every shot stays within 20 seconds"
+                f"{minimum_action_beats} ActionBeats so no semantic action interval "
+                "exceeds 15 seconds"
             )
         return self
 
