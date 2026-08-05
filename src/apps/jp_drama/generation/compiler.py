@@ -196,6 +196,18 @@ def compile_generation_plan(
             )
 
     continuity_contracts, requirements = _build_continuity(prepared, segments)
+    if any(item.generation_status == "missing" for item in requirements):
+        quality_warnings.append(
+            GenerationReadinessIssue(
+                code="reference_assets_missing",
+                scope="planning",
+                severity="warning",
+                message=(
+                    "Reference assets are structurally specified but have not been "
+                    "generated or approved."
+                ),
+            )
+        )
     render_graph = _build_render_graph(segments, capabilities)
     cost_plan = _build_cost_plan(
         segments,
@@ -361,6 +373,12 @@ def _group_units(
         complexity.level == "low"
         and profile.policy.allow_low_complexity_15_seconds
         and len(units[0].frame.character_seed_ids) <= profile.policy.max_characters_for_15_seconds
+        and (
+            not profile.policy.strict_lip_sync_shortens_segment
+            or not units[0].frame.dialogue_cues
+        )
+        and not units[0].frame.prop_seed_ids
+        and units[0].frame.camera.movement in {"static", "none"}
     ):
         maximum_seconds = min(15, math.floor(capabilities.max_duration_seconds))
     max_frames = maximum_seconds * fps
@@ -951,7 +969,9 @@ def _build_cost_plan(
                 )
             )
 
-    expected = reference_image_calls + video_calls + tts_calls + native_audio_calls
+    # Native AV is included in the video submission; retain the logical usage
+    # metric without double-counting a second external API call.
+    expected = reference_image_calls + video_calls + tts_calls
     return GenerationCostPlan(
         reference_image_calls=reference_image_calls,
         video_calls=video_calls,
