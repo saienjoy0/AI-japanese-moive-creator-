@@ -5,10 +5,12 @@ from .compiler import (
     SUPPORTED_ROUTES,
     SeriesPlanError,
     build_episode_asset_bundle,
-    build_prepared_episode,
-    compile_episode_generation_plan,
     load_series_inputs,
     validate_cross_contract,
+)
+from .contracts import (
+    build_prepared_episode,
+    compile_episode_generation_plan,
 )
 from .models import (
     ASSET_CATALOG_SCHEMA_VERSION,
