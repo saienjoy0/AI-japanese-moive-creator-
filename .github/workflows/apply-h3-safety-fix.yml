@@ -48,16 +48,13 @@ jobs:
             tests/test_jp_drama_minimax_h3_safety.py \
             tests/test_jp_drama_multi_provider_core.py \
             tests/test_jp_drama_generation_segments.py
-      - name: Commit exact reviewed scope
+      - name: Commit verified source and tests
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- \
-            .github/workflows/apply-h3-safety-fix.yml \
             tools/apply_h3_safety_fix.py \
             tools/h3_fix_parts \
-            .github/workflows/jp-drama-minimax-h3-core.yml \
-            .github/workflows/jp-drama-minimax-h3-paid-canary.yml \
             docs/pr14-minimax-h3-provider-core.md \
             examples/jp_drama/minimax_h3_asset_manifest.example.json \
             src/apps/jp_drama/rendering/media_probe.py \
@@ -71,5 +68,5 @@ jobs:
             tests/test_jp_drama_minimax_h3_core.py \
             tests/test_jp_drama_minimax_h3_safety.py
           git diff --cached --check
-          git commit -m "feat: add approval-gated MiniMax H3 paid canary"
+          git commit -m "feat: add approval-gated MiniMax H3 canary core"
           git push origin HEAD:feature/jp-drama-minimax-h3-core
