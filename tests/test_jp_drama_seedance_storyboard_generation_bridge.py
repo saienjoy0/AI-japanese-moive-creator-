@@ -138,7 +138,7 @@ def test_seedance_plan_remains_one_manual_operator_job_without_false_multishot_c
     assert plan.cost_plan.unknown_cost_components
 
 
-def test_continuation_instruction_survives_as_transition_and_readiness_evidence() -> None:
+def test_continuation_instruction_is_preserved_but_blocks_execution_until_bound() -> None:
     package = _package()
     prepared = build_storyboard_prepared_episode(package, "E02")
     plan = compile_storyboard_generation_plan(
@@ -153,6 +153,10 @@ def test_continuation_instruction_survives_as_transition_and_readiness_evidence(
     assert "将@视频1延长15s" in plan.segments[0].prompt_bundle.timed_shot_prompt
     assert "continuation_asset_required" in {
         item.code for item in plan.readiness_report.warnings
+    }
+    assert plan.readiness_report.execution_route_ready is False
+    assert "continuation_reference_not_bound" in {
+        item.code for item in plan.readiness_report.errors
     }
 
 
@@ -190,5 +194,8 @@ def test_cli_writes_all_routes_and_makes_zero_provider_calls(tmp_path: Path) -> 
         assert (output / "E01" / route / "asset_bundle_pending.json").is_file()
     report = json.loads((output / "bridge_report.json").read_text(encoding="utf-8"))
     assert report["external_api_calls"] == 0
+    assert report["episodes"]["E01"]["prepared_episode_digest"].startswith(
+        "sha256:"
+    )
     assert report["episodes"]["E01"]["routes"]["h3"]["segments"] == 1
     assert report["episodes"]["E01"]["routes"]["wan"]["segments"] == 5
