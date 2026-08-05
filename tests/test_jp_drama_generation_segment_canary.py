@@ -190,6 +190,27 @@ def test_contract_never_silently_trims_or_enables_multi_shot() -> None:
         )
 
 
+def test_contract_rejects_invalid_provider_trim_window() -> None:
+    prepared = _prepared()
+    config = LiveProviderConfig.load(PROVIDERS_PATH)
+    plan = _plan(prepared, config)
+    segment = plan.segments[0]
+    invalid = segment.model_copy(
+        update={
+            "used_start_frame": -1,
+            "used_end_frame": segment.editorial_frame_count - 1,
+        }
+    )
+
+    with pytest.raises(SegmentCanaryError, match="trim window is invalid"):
+        validate_segment_canary_contract(
+            prepared,
+            plan,
+            invalid,
+            allow_experimental_multi_shot=True,
+        )
+
+
 def test_cli_preflight_uses_real_plan_and_makes_zero_paid_calls(tmp_path: Path) -> None:
     _, plan, segment, providers, prepared_path, plan_path = _preflight_fixture(tmp_path)
     output_path = tmp_path / "segment.mp4"
