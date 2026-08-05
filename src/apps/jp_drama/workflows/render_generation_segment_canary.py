@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from ..generation.models import GenerationPlanEpisode
 from ..preparation.models import PreparedEpisode
+from ..rendering.canary_tasks import Wan27LiveTaskExecutor
 from ..rendering.provider_config import LiveProviderConfig, ProviderConfigurationError
 from ..rendering.segment_canary import (
     SEGMENT_CANARY_PROTOCOL,
@@ -106,6 +107,55 @@ def _append_optional(arguments: list[str], flag: str, value: str | None) -> None
         arguments.extend([flag, value])
 
 
+def _segment_metadata(
+    *,
+    segment,
+    plan: GenerationPlanEpisode,
+    materialized: PreparedEpisode,
+    materialized_path: Path,
+    allow_experimental_multi_shot: bool,
+) -> dict[str, object]:
+    return {
+        "canary_protocol": SEGMENT_CANARY_PROTOCOL,
+        "segment_id": segment.segment_id,
+        "source_shot_ids": segment.parent_shot_ids,
+        "generation_plan_episode_id": plan.generation_plan_episode_id,
+        "generation_plan_digest": plan.content_digest,
+        "provider_route_id": segment.provider_route_id,
+        "requested_duration_seconds": segment.requested_duration_seconds,
+        "editorial_duration_seconds": str(segment.editorial_duration_seconds),
+        "editorial_frame_count": segment.editorial_frame_count,
+        "used_start_frame": segment.used_start_frame,
+        "used_end_frame": segment.used_end_frame,
+        "timeline_fps": segment.timeline_fps,
+        "editorial_shot_count": len(segment.editorial_shots),
+        "experimental_multi_shot": (
+            len(segment.editorial_shots) > 1 and allow_experimental_multi_shot
+        ),
+        "materialized_prepared_episode": str(materialized_path),
+        "materialized_source_digest": materialized.source_digest,
+    }
+
+
+def _write_enriched_report(
+    payload: dict[str, object],
+    *,
+    report_path: str | None,
+    print_report: bool,
+) -> str:
+    content = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+    ) + "\n"
+    if report_path:
+        _atomic_write(Path(report_path), content)
+    if print_report:
+        print(content, end="")
+    return content
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     prepared_path = Path(args.prepared_input)
@@ -137,6 +187,78 @@ def main(argv: list[str] | None = None) -> int:
         else _materialized_path(output_path, args.segment_id)
     ).resolve()
     _atomic_write(materialized_path, materialized.to_canonical_json() + "\n")
+
+    approved_shots = {segment.segment_id}
+    planned_keyframe_calls = 1
+    planned_keyframe_cost = config.dashscope.estimate_image_cost_cny()
+    planned_render_calls = Wan27LiveTaskExecutor.estimate_api_calls(
+        materialized,
+        approved_keyframe_shots=approved_shots,
+    )
+    planned_render_cost = Wan27LiveTaskExecutor.estimate_cost_cny(
+        materialized,
+        config,
+        approved_keyframe_shots=approved_shots,
+    )
+    planned_api_calls = planned_keyframe_calls + planned_render_calls
+    planned_cost_cny = planned_keyframe_cost + planned_render_cost
+    within_call_limit = 0 <= args.max_api_calls and planned_api_calls <= args.max_api_calls
+    within_cost_limit = Decimal("0") <= args.max_cost_cny and planned_cost_cny <= args.max_cost_cny
+
+    common_metadata = _segment_metadata(
+        segment=segment,
+        plan=plan,
+        materialized=materialized,
+        materialized_path=materialized_path,
+        allow_experimental_multi_shot=args.allow_experimental_multi_shot,
+    )
+    budget_metadata: dict[str, object] = {
+        "planned_keyframe_calls": planned_keyframe_calls,
+        "planned_render_calls": planned_render_calls,
+        "planned_api_calls": planned_api_calls,
+        "planned_keyframe_cost_cny": str(planned_keyframe_cost),
+        "planned_render_cost_cny": str(planned_render_cost),
+        "planned_cost_cny": str(planned_cost_cny),
+        "max_api_calls": args.max_api_calls,
+        "max_cost_cny": str(args.max_cost_cny),
+        "within_requested_call_limit": within_call_limit,
+        "within_requested_cost_limit": within_cost_limit,
+    }
+    if not within_call_limit or not within_cost_limit:
+        failure = {
+            "valid": False,
+            "stage": args.stage,
+            "credentials_present": False,
+            "external_api_calls": 0,
+            "budget_gate": "blocked_before_provider_submission",
+            "errors": [
+                message
+                for condition, message in (
+                    (
+                        not within_call_limit,
+                        f"planned {planned_api_calls} API calls exceed limit {args.max_api_calls}",
+                    ),
+                    (
+                        not within_cost_limit,
+                        f"planned {planned_cost_cny} CNY exceeds limit {args.max_cost_cny} CNY",
+                    ),
+                )
+                if condition
+            ],
+            **common_metadata,
+            **budget_metadata,
+        }
+        _write_enriched_report(
+            failure,
+            report_path=args.report,
+            print_report=args.print_report,
+        )
+        print(
+            "provider error: segment Canary budget gate blocked all provider submissions: "
+            + "; ".join(failure["errors"]),
+            file=sys.stderr,
+        )
+        return EXIT_PROVIDER
 
     delegate_report = _delegate_report_path(output_path, args.segment_id).resolve()
     delegated = [
@@ -180,46 +302,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"provider error: cannot read delegated report: {exc}", file=sys.stderr)
         return EXIT_PROVIDER
 
-    payload.update(
-        {
-            "canary_protocol": SEGMENT_CANARY_PROTOCOL,
-            "segment_id": segment.segment_id,
-            "source_shot_ids": segment.parent_shot_ids,
-            "generation_plan_episode_id": plan.generation_plan_episode_id,
-            "generation_plan_digest": plan.content_digest,
-            "provider_route_id": segment.provider_route_id,
-            "requested_duration_seconds": segment.requested_duration_seconds,
-            "editorial_duration_seconds": str(segment.editorial_duration_seconds),
-            "editorial_frame_count": segment.editorial_frame_count,
-            "used_start_frame": segment.used_start_frame,
-            "used_end_frame": segment.used_end_frame,
-            "timeline_fps": segment.timeline_fps,
-            "editorial_shot_count": len(segment.editorial_shots),
-            "experimental_multi_shot": (
-                len(segment.editorial_shots) > 1
-                and args.allow_experimental_multi_shot
-            ),
-            "materialized_prepared_episode": str(materialized_path),
-            "materialized_source_digest": materialized.source_digest,
-        }
-    )
-    report_content = json.dumps(
+    payload.update(common_metadata)
+    payload.update(budget_metadata)
+    _write_enriched_report(
         payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
-    ) + "\n"
-    if args.report:
-        _atomic_write(Path(args.report), report_content)
-    if args.print_report:
-        print(report_content, end="")
-    else:
+        report_path=args.report,
+        print_report=args.print_report,
+    )
+    if not args.print_report:
         print(
             f"Segment: {segment.segment_id}\n"
             f"Stage: {args.stage}\n"
             f"Route: {segment.provider_route_id}\n"
             f"Provider request: {segment.requested_duration_seconds}s\n"
             f"Editorial duration: {segment.editorial_duration_seconds}s\n"
+            f"Planned budget: {planned_api_calls} calls / {planned_cost_cny} CNY\n"
             f"Materialized input: {materialized_path}\n"
             f"External API calls this stage: {payload.get('external_api_calls', 0)}\n"
             "Status: OK"
