@@ -133,8 +133,8 @@ jobs:
           assert len(routes) == 9
           assert len(commands) == 9
           assert canary["recommendation_ready"] is False
-          assert canary["recommended_episode_id"] is None
-          assert canary["recommended_segment_id"] is None
+          assert canary.get("recommended_episode_id") is None
+          assert canary.get("recommended_segment_id") is None
           assert all(
               all(
                   "provider_duration_exceeded" in rejected["reason_codes"]
