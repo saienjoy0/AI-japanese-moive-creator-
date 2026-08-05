@@ -85,6 +85,7 @@ jobs:
           EXIT_CODE=$?
           set -e
           test "$EXIT_CODE" -eq 0 -o "$EXIT_CODE" -eq 2
+          printf '%s\n' "$EXIT_CODE" > output/jp_drama/pr14/generation-exit.txt
       - name: Verify H3-first zero-call plan
         run: |
           test -z "${MINIMAX_API_KEY:-}"
@@ -92,8 +93,34 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          plan = json.loads(Path("output/jp_drama/pr14/generation/generation_plan_episode.json").read_text())
+
+          plan = json.loads(
+              Path("output/jp_drama/pr14/generation/generation_plan_episode.json").read_text()
+          )
+          report = plan["readiness_report"]
+          route_errors = [item for item in report["errors"] if item["scope"] == "route"]
           assert plan["provider_route_id"] == "minimax/h3-reference-av"
-          assert plan["readiness_report"]["external_api_calls"] == 0
-          assert all(4 <= item["requested_duration_seconds"] <= 15 for item in plan["segments"])
+          assert report["external_api_calls"] == 0
+          assert route_errors == []
+          assert report["execution_route_ready"] == report["planning_ready"]
+          assert plan["cost_plan"]["unknown_cost_components"] == []
+          assert all(
+              item["provider_route_id"] == "minimax/h3-reference-av"
+              for item in plan["segments"]
+          )
+          assert all(
+              4 <= item["requested_duration_seconds"] <= 15
+              for item in plan["segments"]
+          )
+          PY
+      - name: Verify no credentials or generated media were committed
+        run: |
+          test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' | grep -E 'jp_drama|minimax_h3' || true)"
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          secret = re.compile(r"MINIMAX_API_KEY\s*=\s*[^\"'$\s]")
+          for path in Path("src/apps/jp_drama/rendering").glob("minimax_h3_*.py"):
+              assert not secret.search(path.read_text(encoding="utf-8")), path
           PY
