@@ -159,10 +159,18 @@ def test_real_one_bunch_preproduction_package_is_complete_and_zero_call(
     canary = json.loads(
         (output / "canary_recommendation.json").read_text(encoding="utf-8")
     )
-    assert canary["recommendation_ready"] is True
-    assert canary["recommended_episode_id"] == "E01"
-    assert canary["recommended_segment_id"].startswith("E01-G")
+    assert canary["recommendation_ready"] is False
+    assert canary["recommended_episode_id"] is None
+    assert canary["recommended_segment_id"] is None
     assert len(canary["episode_decisions"]) == 3
+    assert all(not item["eligible_segment_ids"] for item in canary["episode_decisions"])
+    assert all(
+        all(
+            "provider_duration_exceeded" in rejected["reason_codes"]
+            for rejected in item["rejected_segments"]
+        )
+        for item in canary["episode_decisions"]
+    )
 
     approval_commands = json.loads(
         (output / "bundle_approval_commands.json").read_text(encoding="utf-8")
