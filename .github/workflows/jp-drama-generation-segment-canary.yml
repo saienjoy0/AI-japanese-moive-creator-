@@ -62,7 +62,7 @@ jobs:
             tests/test_jp_drama_generation_segments.py \
             tests/test_jp_drama_wan27_canary.py
 
-      - name: Build a generation plan from a normal Japanese MD script
+      - name: Ingest a normal Japanese MD script
         run: |
           rm -rf output/jp_drama/pr12
           mkdir -p output/jp_drama/pr12
@@ -70,16 +70,70 @@ jobs:
             --input examples/jp_drama/script_ingestion/sample_script.md \
             --output-dir output/jp_drama/pr12/ingestion \
             --llm-provider fixture
+
+      - name: Compile the ingested script into PreparedEpisode
+        run: |
           python -m src.apps.jp_drama.workflows.prepare_episode \
             --input output/jp_drama/pr12/ingestion/episode_package.json \
             --output output/jp_drama/pr12/prepared \
             --catalog examples/jp_drama/model_capabilities.json \
             --strict
+
+      - name: Compile adaptive segments and identify a safe Canary candidate
+        run: |
+          set +e
           python -m src.apps.jp_drama.workflows.prepare_generation \
             --input output/jp_drama/pr12/prepared/prepared_episode.json \
             --output-dir output/jp_drama/pr12/generation \
             --profile examples/jp_drama/generation/wan27_profile.json \
             --live-provider-config examples/jp_drama/dashscope_live_providers.json
+          PLAN_EXIT=$?
+          set -e
+          test "$PLAN_EXIT" -eq 0 -o "$PLAN_EXIT" -eq 2
+          printf '%s\n' "$PLAN_EXIT" > output/jp_drama/pr12/generation-planning-exit.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          plan_path = Path("output/jp_drama/pr12/generation/generation_plan_episode.json")
+          payload = json.loads(plan_path.read_text(encoding="utf-8"))
+          candidates = []
+          for segment in payload["segments"]:
+              provider_frames = (
+                  segment["requested_duration_seconds"] * segment["timeline_fps"]
+              )
+              trim_valid = (
+                  segment["used_start_frame"] >= 0
+                  and segment["used_end_frame"] <= provider_frames
+                  and segment["used_end_frame"] > segment["used_start_frame"]
+                  and segment["used_end_frame"] - segment["used_start_frame"]
+                  == segment["editorial_frame_count"]
+              )
+              if (
+                  segment["provider_route_id"] == "wan/i2v"
+                  and segment["audio_strategy"] != "native_av"
+                  and segment["requested_duration_seconds"] <= 15
+                  and trim_valid
+              ):
+                  candidates.append(segment)
+          assert candidates, "normal-script plan contains no safe Wan Canary segment"
+          selected = sorted(
+              candidates,
+              key=lambda item: (
+                  item["requested_duration_seconds"],
+                  item["order"],
+                  item["segment_id"],
+              ),
+          )[0]
+          Path("output/jp_drama/pr12/selected-segment-id.txt").write_text(
+              selected["segment_id"] + "\n",
+              encoding="utf-8",
+          )
+          Path("output/jp_drama/pr12/selected-segment.json").write_text(
+              json.dumps(selected, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Create zero-call Canary provider config
         run: |
@@ -96,19 +150,13 @@ jobs:
           )
           PY
 
-      - name: Run segment Canary preflight without credentials
+      - name: Run the selected segment Canary preflight without credentials
         env:
           DASHSCOPE_API_KEY: ""
           DASHSCOPE_BASE_URL: ""
           DASHSCOPE_WORKSPACE_ID: ""
         run: |
-          SEGMENT_ID="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          payload = json.loads(Path("output/jp_drama/pr12/generation/generation_plan_episode.json").read_text())
-          print(payload["segments"][0]["segment_id"])
-          PY
-          )"
+          SEGMENT_ID="$(cat output/jp_drama/pr12/selected-segment-id.txt)"
           python -m src.apps.jp_drama.workflows.render_generation_segment_canary \
             --prepared-input output/jp_drama/pr12/prepared/prepared_episode.json \
             --generation-plan output/jp_drama/pr12/generation/generation_plan_episode.json \
@@ -132,9 +180,11 @@ jobs:
 
           report = json.loads(Path("output/jp_drama/pr12/segment-canary-report.json").read_text())
           ingestion = json.loads(Path("output/jp_drama/pr12/ingestion/ingestion_report.json").read_text())
+          selected = json.loads(Path("output/jp_drama/pr12/selected-segment.json").read_text())
           assert ingestion["valid"] is True
           assert ingestion["external_api_calls"] == 0
           assert report["canary_protocol"] == "generation-segment-canary-v1"
+          assert report["segment_id"] == selected["segment_id"]
           assert report["stage"] == "preflight"
           assert report["provider_route_id"] == "wan/i2v"
           assert report["external_api_calls"] == 0
@@ -173,6 +223,8 @@ jobs:
           path: |
             output/jp_drama/pr12/ingestion
             output/jp_drama/pr12/generation
+            output/jp_drama/pr12/generation-planning-exit.txt
+            output/jp_drama/pr12/selected-segment.json
             output/jp_drama/pr12/segment-canary-report.json
             output/jp_drama/pr12/materialized-segment-prepared.json
           if-no-files-found: error
