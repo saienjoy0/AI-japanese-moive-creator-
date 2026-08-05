@@ -38,8 +38,10 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-docker.txt
 
-      - name: Install focused dependencies
+      - name: Install FFmpeg and focused dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --upgrade pip
           python -m pip install -r requirements-docker.txt
           python -m pip install "pytest>=8,<9"
