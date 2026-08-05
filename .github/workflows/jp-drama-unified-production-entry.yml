@@ -1,0 +1,77 @@
+name: Japanese Drama Unified Production Entry
+
+on:
+  pull_request:
+    paths:
+      - "src/apps/jp_drama/production/**"
+      - "src/apps/jp_drama/workflows/run_production_episode.py"
+      - "src/apps/jp_drama/workflows/render_episode.py"
+      - "tests/test_jp_drama_production_entry.py"
+      - "tests/test_jp_drama_legacy_entry_guard.py"
+      - "tests/test_jp_drama_live_providers.py"
+      - "docs/pr22-unified-production-entry.md"
+      - "docs/jp-drama-live-providers.md"
+      - ".github/workflows/jp-drama-unified-production-entry.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/production/**"
+      - "src/apps/jp_drama/workflows/run_production_episode.py"
+      - "src/apps/jp_drama/workflows/render_episode.py"
+      - "tests/test_jp_drama_production_entry.py"
+      - "tests/test_jp_drama_legacy_entry_guard.py"
+      - "tests/test_jp_drama_live_providers.py"
+      - "docs/pr22-unified-production-entry.md"
+      - "docs/jp-drama-live-providers.md"
+      - ".github/workflows/jp-drama-unified-production-entry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-entry:
+    name: Fail-closed preflight and exact zero-call compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<10"
+
+      - name: Compile production entry
+        run: |
+          python -m compileall -q \
+            src/apps/jp_drama/production \
+            src/apps/jp_drama/workflows/run_production_episode.py \
+            src/apps/jp_drama/workflows/render_episode.py
+
+      - name: Run production entry regressions
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_production_entry.py \
+            tests/test_jp_drama_legacy_entry_guard.py \
+            tests/test_jp_drama_live_providers.py
+
+      - name: Ensure paid execution is disabled and credentials are absent
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          test -z "${MINIMAX_API_KEY:-}"
+          test -z "${MULEROUTER_API_KEY:-}"
+          grep -q "common_provider_dispatcher_not_implemented" \
+            src/apps/jp_drama/workflows/run_production_episode.py
+          grep -q "legacy_full_episode_entry_disabled" \
+            src/apps/jp_drama/workflows/render_episode.py
