@@ -11,6 +11,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from ..assets.bundle import prepared_content_digest
 from ..rendering.minimax_h3_adapter import build_h3_first_provider_registry
 from ..rendering.minimax_h3_config import MiniMaxH3ProviderConfig
 from ..rendering.provider_config import LiveProviderConfig
@@ -203,6 +204,7 @@ def _write_bridge_artifacts(
                 episode_id,
                 fps=fps,
             )
+            prepared_digest = prepared_content_digest(prepared)
             (episode_root / "prepared_episode.json").write_text(
                 prepared.to_canonical_json() + "\n",
                 encoding="utf-8",
@@ -238,6 +240,9 @@ def _write_bridge_artifacts(
                     "execution_route_ready": (
                         plan.readiness_report.execution_route_ready
                     ),
+                    "readiness_error_codes": [
+                        item.code for item in plan.readiness_report.errors
+                    ],
                     "unknown_cost_components": (
                         plan.cost_plan.unknown_cost_components
                     ),
@@ -255,9 +260,7 @@ def _write_bridge_artifacts(
                     ]
                 )
             episode_report[episode_id] = {
-                "prepared_episode_digest": prepared.content_digest
-                if hasattr(prepared, "content_digest")
-                else None,
+                "prepared_episode_digest": prepared_digest,
                 "routes": route_report,
             }
 
