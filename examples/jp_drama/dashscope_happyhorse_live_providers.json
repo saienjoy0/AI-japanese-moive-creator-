@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.2.0",
+  "mode": "live",
+  "dashscope": {
+    "provider": "dashscope",
+    "api_key_env": "DASHSCOPE_API_KEY",
+    "base_url_env": "DASHSCOPE_BASE_URL",
+    "upload_base_url_env": "DASHSCOPE_UPLOAD_BASE_URL",
+    "workspace_id_env": "DASHSCOPE_WORKSPACE_ID",
+    "region": "singapore",
+    "image_model": "wan2.7-image-pro",
+    "video_model": "wan2.7-i2v",
+    "native_av_video_model": "happyhorse-1.1-i2v",
+    "tts_model": "qwen3-tts-flash",
+    "tts_family": "qwen3",
+    "default_voice": "Ono Anna",
+    "voice_by_character": {},
+    "tts_instructions_enabled": false,
+    "image_size": "960*1696",
+    "image_thinking_mode": true,
+    "video_resolution": "720P",
+    "provider_clip_seconds": 5,
+    "prompt_extend": true,
+    "watermark": false,
+    "seed_base": 240700,
+    "price_snapshot_date": "2026-08-06",
+    "image_cost_cny": "0.562065",
+    "video_cost_cny_per_second": "0.74942",
+    "tts_cost_cny_per_10k_chars": "0.733924"
+  }
+}
