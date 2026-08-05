@@ -177,6 +177,9 @@ The compiler reports exact call counts for:
 - delegated TTS
 - native-audio generation
 
+`native_audio_calls` tecords native-AV usage but does not add a second API call;
+native audio is produced by the same video submission.
+
 Known adapter costs are totaled by currency. Currencies are not automatically
 converted. Unknown components remain explicit. A hard budget cannot pass while
 relevant cost components are unknown.
@@ -213,7 +216,9 @@ output/jp_drama/generation/
 └── summary.txt
 ```
 
-All writes are atomic. The same source, profile, and registered capabilities
+All artifacts are staged in a sibling directory and published as one directory
+transaction, with rollback protection when overwriting. The same source, profile,
+and registered capabilities
 produce byte-identical JSON and stable IDs.
 
 ## 10. CLI

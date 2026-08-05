@@ -5,12 +5,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from src.apps.jp_drama import EpisodePackage
 from src.apps.jp_drama.generation import (
     ProviderSegmentationProfile,
     compile_generation_plan,
 )
 from src.apps.jp_drama.preparation import PreparedEpisode, compile_episode
+from src.apps.jp_drama.generation import serialization as serialization_module
+from src.apps.jp_drama.generation.serialization import write_generation_artifacts
 from src.apps.jp_drama.preparation.compiler import load_model_catalog
 from src.apps.jp_drama.rendering.provider_registry import (
     MockProviderAdapter,
@@ -68,6 +72,20 @@ def test_45_second_fixture_compiles_into_variable_segments() -> None:
     assert plan.readiness_report.execution_route_ready is True
     assert plan.readiness_report.media_quality_validated is False
     assert plan.readiness_report.external_api_calls == 0
+    assert plan.cost_plan.expected_calls == 8
+    assert plan.cost_plan.native_audio_calls > 0
+    assert plan.cost_plan.expected_calls == (
+        plan.cost_plan.reference_image_calls
+        + plan.cost_plan.video_calls
+        + plan.cost_plan.tts_calls
+    )
+    assert "reference_assets_missing" in {
+        item.code for item in plan.readiness_report.warnings
+    }
+    assert all(
+        item.role != "first_frame"
+        for item in plan.reference_asset_requirements
+    )
 
 
 def test_frame_timeline_and_dialogue_coverage_are_exact() -> None:
@@ -197,3 +215,49 @@ def test_cli_writes_only_deterministic_offline_artifacts(tmp_path: Path) -> None
     assert report["execution_route_ready"] is True
     assert report["external_api_calls"] == 0
     assert report["media_quality_validated"] is False
+
+
+
+def test_output_directory_transaction_preserves_existing_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = compile_generation_plan(
+        _prepared(),
+        profile=ProviderSegmentationProfile.load(PROFILE_PATH),
+        registry=_mock_registry(),
+    )
+    destination = tmp_path / "generation"
+    write_generation_artifacts(plan, destination)
+    before = {item.name: item.read_bytes() for item in destination.iterdir()}
+
+    real_atomic_write = serialization_module._atomic_write
+    calls = 0
+
+    def fail_during_staging(path: Path, content: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected staging failure")
+        real_atomic_write(path, content)
+
+    monkeypatch.setattr(serialization_module, "_atomic_write", fail_during_staging)
+    with pytest.raises(OSError, match="injected staging failure"):
+        write_generation_artifacts(plan, destination, overwrite=True)
+
+    after = {item.name: item.read_bytes() for item in destination.iterdir()}
+    assert after == before
+    assert not list(tmp_path.glob(".generation.staging-*"))
+
+
+def test_low_complexity_dialogue_does_not_use_conditional_15_seconds() -> None:
+    plan = compile_generation_plan(
+        _prepared(),
+        profile=ProviderSegmentationProfile.load(PROFILE_PATH),
+        registry=_mock_registry(),
+    )
+    assert all(
+        segment.requested_duration_seconds < 15
+        for segment in plan.segments
+        if segment.dialogue_slices
+    )

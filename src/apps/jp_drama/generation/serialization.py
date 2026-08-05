@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from .models import GenerationPlanEpisode
@@ -29,46 +31,73 @@ def write_generation_artifacts(
     overwrite: bool = False,
 ) -> dict[str, Path]:
     destination = Path(output_dir)
-    destination.mkdir(parents=True, exist_ok=True)
-    paths = {name: destination / name for name in OUTPUT_FILENAMES}
-    if not overwrite and any(path.exists() for path in paths.values()):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() and not overwrite:
         raise OSError("generation output already exists; pass --overwrite to replace it")
 
-    editorial_shots = [
-        shot.model_dump(mode="json", exclude_none=True)
-        for segment in plan.segments
-        for shot in segment.editorial_shots
-    ]
-    payloads = {
-        "generation_plan_episode.json": plan.to_canonical_json(indent=2) + "\n",
-        "generation_segments.json": _json(
-            [item.model_dump(mode="json", exclude_none=True) for item in plan.segments]
-        ),
-        "editorial_shots.json": _json(editorial_shots),
-        "continuity_contracts.json": _json(
-            [item.model_dump(mode="json", exclude_none=True) for item in plan.continuity_contracts]
-        ),
-        "reference_asset_requirements.json": _json(
-            [
-                item.model_dump(mode="json", exclude_none=True)
-                for item in plan.reference_asset_requirements
-            ]
-        ),
-        "generation_render_graph.json": _json(
-            plan.render_graph.model_dump(mode="json", exclude_none=True)
-        ),
-        "generation_cost_plan.json": _json(
-            plan.cost_plan.model_dump(mode="json", exclude_none=True)
-        ),
-        "generation_readiness_report.json": _json(
-            plan.readiness_report.model_dump(mode="json", exclude_none=True)
-        ),
-        "summary.txt": render_generation_summary(plan),
-    }
-    for name, content in payloads.items():
-        _atomic_write(paths[name], content)
-    return paths
+    staging = Path(
+        tempfile.mkdtemp(
+            prefix=f".{destination.name}.staging-",
+            dir=destination.parent,
+        )
+    )
+    backup: Path | None = None
+    try:
+        staged_paths = {name: staging / name for name in OUTPUT_FILENAMES}
+        editorial_shots = [
+            shot.model_dump(mode="json", exclude_none=True)
+            for segment in plan.segments
+            for shot in segment.editorial_shots
+        ]
+        payloads = {
+            "generation_plan_episode.json": plan.to_canonical_json(indent=2) + "\n",
+            "generation_segments.json": _json(
+                [item.model_dump(mode="json", exclude_none=True) for item in plan.segments]
+            ),
+            "editorial_shots.json": _json(editorial_shots),
+            "continuity_contracts.json": _json(
+                [item.model_dump(mode="json", exclude_none=True) for item in plan.continuity_contracts]
+            ),
+            "reference_asset_requirements.json": _json(
+                [
+                    item.model_dump(mode="json", exclude_none=True)
+                    for item in plan.reference_asset_requirements
+                ]
+            ),
+            "generation_render_graph.json": _json(
+                plan.render_graph.model_dump(mode="json", exclude_none=True)
+            ),
+            "generation_cost_plan.json": _json(
+                plan.cost_plan.model_dump(mode="json", exclude_none=True)
+            ),
+            "generation_readiness_report.json": _json(
+                plan.readiness_report.model_dump(mode="json", exclude_none=True)
+            ),
+            "summary.txt": render_generation_summary(plan),
+        }
+        for name, content in payloads.items():
+            _atomic_write(staged_paths[name], content)
 
+        if destination.exists():
+            backup = Path(
+                tempfile.mkdtemp(
+                    prefix=f".{destination.name}.backup-",
+                    dir=destination.parent,
+                )
+            )
+            backup.rmdir()
+            os.replace(destination, backup)
+        os.replace(staging, destination)
+        if backup is not None:
+            shutil.rmtree(backup)
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        if backup is not None and backup.exists() and not destination.exists():
+            os.replace(backup, destination)
+        raise
+
+    return {name: destination / name for name in OUTPUT_FILENAMES}
 
 def render_generation_summary(plan: GenerationPlanEpisode) -> str:
     report = plan.readiness_report

@@ -1,0 +1,199 @@
+name: Japanese Drama Generation Segment Canary
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/generation/candidate_selector.py"
+      - "src/apps/jp_drama/generation/__init__.py"
+      - "src/apps/jp_drama/rendering/segment_canary.py"
+      - "src/apps/jp_drama/workflows/render_generation_segment_canary.py"
+      - "tests/test_jp_drama_generation_segment_canary.py"
+      - "docs/pr14-full-episode-repair-phase0.md"
+      - ".github/workflows/jp-drama-generation-segment-canary.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/generation/candidate_selector.py"
+      - "src/apps/jp_drama/generation/__init__.py"
+      - "src/apps/jp_drama/rendering/segment_canary.py"
+      - "src/apps/jp_drama/workflows/render_generation_segment_canary.py"
+      - "tests/test_jp_drama_generation_segment_canary.py"
+      - "docs/pr14-full-episode-repair-phase0.md"
+      - ".github/workflows/jp-drama-generation-segment-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-generation-segment-canary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  segment-canary-contract:
+    name: Validate PR12 plus single-shot Canary with zero paid calls
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<9"
+
+      - name: Compile Japanese drama packages
+        run: python -m compileall -q src/apps/jp_drama
+
+      - name: Run integrated PR8 PR11 PR12 tests
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_generation_segment_canary.py \
+            tests/test_jp_drama_generation_segments.py \
+            tests/test_jp_drama_wan27_canary.py
+
+      - name: Ingest a normal Japanese MD script
+        run: |
+          rm -rf output/jp_drama/pr14
+          mkdir -p output/jp_drama/pr14
+          python -m src.apps.jp_drama.workflows.ingest_script \
+            --input examples/jp_drama/script_ingestion/sample_script.md \
+            --output-dir output/jp_drama/pr14/ingestion \
+            --llm-provider fixture
+
+      - name: Compile the ingested script into PreparedEpisode
+        run: |
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input output/jp_drama/pr14/ingestion/episode_package.json \
+            --output output/jp_drama/pr14/prepared \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --strict
+
+      - name: Compile adaptive segments while retaining full-plan blockers
+        run: |
+          set +e
+          python -m src.apps.jp_drama.workflows.prepare_generation \
+            --input output/jp_drama/pr14/prepared/prepared_episode.json \
+            --output-dir output/jp_drama/pr14/generation \
+            --profile examples/jp_drama/generation/wan27_profile.json \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json
+          PLAN_EXIT=$?
+          set -e
+          test "$PLAN_EXIT" -eq 0 -o "$PLAN_EXIT" -eq 2
+          printf '%s\n' "$PLAN_EXIT" > output/jp_drama/pr14/generation-planning-exit.txt
+
+      - name: Create zero-call provider config with an explicit 15 second limit
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = Path("examples/jp_drama/dashscope_live_providers.json")
+          payload = json.loads(source.read_text(encoding="utf-8"))
+          payload["dashscope"]["provider_clip_seconds"] = 15
+          Path("output/jp_drama/pr14/providers-preflight.json").write_text(
+              json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Auto-select and preflight one formal Wan single-shot segment
+        env:
+          DASHSCOPE_API_KEY: ""
+          DASHSCOPE_BASE_URL: ""
+          DASHSCOPE_UPLOAD_BASE_URL: ""
+          DASHSCOPE_WORKSPACE_ID: ""
+        run: |
+          python -m src.apps.jp_drama.workflows.render_generation_segment_canary \
+            --prepared-input output/jp_drama/pr14/prepared/prepared_episode.json \
+            --generation-plan output/jp_drama/pr14/generation/generation_plan_episode.json \
+            --segment-id auto \
+            --output output/jp_drama/pr14/segment-canary.mp4 \
+            --providers output/jp_drama/pr14/providers-preflight.json \
+            --stage preflight \
+            --max-cost-cny 10.0 \
+            --materialized-prepared output/jp_drama/pr14/materialized-segment-prepared.json \
+            --report output/jp_drama/pr14/segment-canary-report.json \
+            --print-report
+
+      - name: Verify zero-call evidence and single-shot hard gates
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          test ! -e output/jp_drama/pr14/segment-canary.mp4
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("output/jp_drama/pr14/segment-canary-report.json").read_text())
+          ingestion = json.loads(Path("output/jp_drama/pr14/ingestion/ingestion_report.json").read_text())
+          plan = json.loads(Path("output/jp_drama/pr14/generation/generation_plan_episode.json").read_text())
+          selected = next(
+              item for item in plan["segments"]
+              if item["segment_id"] == report["segment_id"]
+          )
+          assert ingestion["valid"] is True
+          assert ingestion["external_api_calls"] == 0
+          assert report["canary_protocol"] == "generation-segment-canary-v2"
+          assert report["stage"] == "preflight"
+          assert report["provider_route_id"] == "wan/i2v"
+          assert report["execution_mode"] == "single_shot"
+          assert report["editorial_shot_count"] == 1
+          assert len(selected["editorial_shots"]) == 1
+          assert report["candidate_selection"]["selected_segment_id"] == report["segment_id"]
+          assert report["external_api_calls"] == 0
+          assert report["credentials_present"] is False
+          assert report["within_requested_call_limit"] is True
+          assert report["within_requested_cost_limit"] is True
+          assert Path(report["materialized_prepared_episode"]).is_file()
+          assert report["execution_budget"]["unknown_components"] == []
+          PY
+
+      - name: Ensure no credential or generated media was committed
+        run: |
+          test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' '*.png' '*.jpg' | grep -E 'jp_drama|generation_segment' || true)"
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          paths = [
+              Path("src/apps/jp_drama/generation/candidate_selector.py"),
+              Path("src/apps/jp_drama/rendering/segment_canary.py"),
+              Path("src/apps/jp_drama/workflows/render_generation_segment_canary.py"),
+              Path("tests/test_jp_drama_generation_segment_canary.py"),
+          ]
+          patterns = [
+              re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+              re.compile(r"DASHSCOPE_API_KEY\s*=\s*[^\"'$\s]"),
+          ]
+          for path in paths:
+              text = path.read_text(encoding="utf-8")
+              for pattern in patterns:
+                  assert not pattern.search(text), f"possible credential in {path}"
+          PY
+
+      - name: Upload integrated single-shot contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-single-shot-canary-contract
+          path: |
+            output/jp_drama/pr14/ingestion
+            output/jp_drama/pr14/generation
+            output/jp_drama/pr14/generation-planning-exit.txt
+            output/jp_drama/pr14/segment-canary-report.json
+            output/jp_drama/pr14/materialized-segment-prepared.json
+          if-no-files-found: error
+          retention-days: 7
