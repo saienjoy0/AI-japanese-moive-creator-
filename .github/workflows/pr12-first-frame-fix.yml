@@ -1,0 +1,109 @@
+name: PR12 First Frame Requirement Fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/pr12-first-frame-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Make first-frame assets capability-aware
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/apps/jp_drama/generation/compiler.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_call = '''    reference_ids = _reference_ids(
+              continuity_group_id,
+              segment_id,
+              frame.character_seed_ids,
+              frame.location_seed_id,
+              frame.prop_seed_ids,
+          )
+          '''
+          new_call = '''    reference_ids = _reference_ids(
+              continuity_group_id,
+              segment_id,
+              frame.character_seed_ids,
+              frame.location_seed_id,
+              frame.prop_seed_ids,
+              requires_first_frame=(
+                  capabilities.image_to_video and not capabilities.text_to_video
+              )
+              or profile.route_id == "wan/i2v",
+          )
+          '''
+          assert old_call in text
+          text = text.replace(old_call, new_call, 1)
+
+          old_signature = '''def _reference_ids(
+              group_id: str,
+              segment_id: str,
+              characters: list[str],
+              location: str,
+              props: list[str],
+          ) -> list[str]:
+          '''
+          new_signature = '''def _reference_ids(
+              group_id: str,
+              segment_id: str,
+              characters: list[str],
+              location: str,
+              props: list[str],
+              *,
+              requires_first_frame: bool,
+          ) -> list[str]:
+          '''
+          assert old_signature in text
+          text = text.replace(old_signature, new_signature, 1)
+
+          old_append = '''    values.append(f"ref_first_{_short_hash(segment_id, 'first_frame')}")
+              return values
+          '''
+          new_append = '''    if requires_first_frame:
+                  values.append(f"ref_first_{_short_hash(segment_id, 'first_frame')}")
+              return values
+          '''
+          assert old_append in text
+          text = text.replace(old_append, new_append, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify focused contract
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<9"
+          python -m compileall -q src/apps/jp_drama
+          python -m pytest -q tests/test_jp_drama_generation_segments.py
+
+      - name: Publish correction and remove workflow
+        run: |
+          rm .github/workflows/pr12-first-frame-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: make first-frame requirements capability-aware"
+          git push origin HEAD:feature/jp-drama-adaptive-generation-segments
