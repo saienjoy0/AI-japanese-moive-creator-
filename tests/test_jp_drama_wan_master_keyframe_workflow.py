@@ -160,7 +160,7 @@ def test_first_frame_preflight_ignores_video_clip_duration(
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     args = _base_args(tmp_path)
     provider_payload = json.loads(LIVE_CONFIG.read_text(encoding="utf-8"))
-    provider_payload["dashscope"]["provider_clip_seconds"] = 1
+    provider_payload["dashscope"]["provider_clip_seconds"] = 2
     tiny_video_limit = tmp_path / "tiny-video-limit.json"
     tiny_video_limit.write_text(
         json.dumps(provider_payload, ensure_ascii=False, indent=2) + "\n",
