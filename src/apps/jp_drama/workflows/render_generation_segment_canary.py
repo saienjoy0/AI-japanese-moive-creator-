@@ -13,15 +13,16 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ..assets import (
-    AssetBundleError,
-    assess_asset_readiness,
-    load_bundle,
+from ..assets import AssetBundleError, assess_asset_readiness, load_bundle
+from ..generation import (
+    CandidateSelectionError,
+    ExecutionBudgetError,
+    build_execution_budget,
+    load_ledgers,
+    select_safe_canary_candidate,
 )
-from ..generation import CandidateSelectionError, select_safe_canary_candidate
 from ..generation.models import GenerationPlanEpisode
 from ..preparation.models import PreparedEpisode
-from ..rendering.canary_tasks import Wan27LiveTaskExecutor
 from ..rendering.provider_config import LiveProviderConfig, ProviderConfigurationError
 from ..rendering.segment_canary import (
     SEGMENT_CANARY_PROTOCOL,
@@ -35,6 +36,7 @@ from .render_canary_episode import main as render_canary_main
 EXIT_OK = 0
 EXIT_INPUT = 1
 EXIT_PROVIDER = 6
+_PROVIDER_BUDGET_STAGES = frozenset({"preflight", "keyframe", "render"})
 
 
 def _decimal(value: str) -> Decimal:
@@ -49,18 +51,22 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Select one safe single-shot GenerationSegment and delegate execution "
             "to the restart-safe Wan 2.7 canary. Paid stages require an approved "
-            "reference-asset and voice bundle."
+            "reference-asset and voice bundle and share one ledger-aware CNY budget."
         )
     )
     parser.add_argument("--prepared-input", required=True, help="PreparedEpisode JSON")
-    parser.add_argument("--generation-plan", required=True, help="GenerationPlanEpisode JSON")
+    parser.add_argument(
+        "--generation-plan", required=True, help="GenerationPlanEpisode JSON"
+    )
     parser.add_argument(
         "--segment-id",
         default="auto",
         help="Generation segment ID or 'auto' for deterministic safe selection",
     )
     parser.add_argument("--output", required=True, help="Final one-segment Canary MP4")
-    parser.add_argument("--providers", required=True, help="Live provider configuration JSON")
+    parser.add_argument(
+        "--providers", required=True, help="Live provider configuration JSON"
+    )
     parser.add_argument("--asset-bundle", help="ApprovedAssetBundle JSON")
     parser.add_argument(
         "--stage",
@@ -78,6 +84,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report")
     parser.add_argument("--max-api-calls", type=int, default=3)
     parser.add_argument("--max-cost-cny", type=_decimal, default=Decimal("10.0"))
+    parser.add_argument("--retry-reserve-cny", type=_decimal, default=Decimal("0"))
+    parser.add_argument(
+        "--candidate-reserve-cny", type=_decimal, default=Decimal("0")
+    )
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--print-report", action="store_true")
     return parser
@@ -108,6 +118,10 @@ def _delegate_report_path(output: Path, segment_id: str) -> Path:
 
 def _derived_provider_path(output: Path, segment_id: str) -> Path:
     return output.parent / f".{output.stem}_{segment_id}_providers.json"
+
+
+def _default_ledger_path(output: Path, segment_id: str) -> Path:
+    return output.parent / f".{output.stem}_{segment_id}_provider_ledger.json"
 
 
 def _append_optional(arguments: list[str], flag: str, value: str | None) -> None:
@@ -274,10 +288,87 @@ def _config_with_approved_voices(config: LiveProviderConfig, bundle) -> LiveProv
         for item in bundle.voice_profiles
         if item.approval_status == "approved" and item.voice_id
     }
-    provider = config.dashscope.model_copy(
-        update={"voice_by_character": approved}
-    )
+    provider = config.dashscope.model_copy(update={"voice_by_character": approved})
     return config.model_copy(update={"dashscope": provider})
+
+
+def _load_existing_ledgers(ledger_path: Path) -> list:
+    if not ledger_path.is_file():
+        return []
+    return load_ledgers([ledger_path])
+
+
+def _build_budget(
+    *,
+    plan: GenerationPlanEpisode,
+    config: LiveProviderConfig,
+    bundle,
+    ledger_path: Path,
+    segment_id: str,
+    args: argparse.Namespace,
+):
+    return build_execution_budget(
+        plan,
+        config,
+        asset_bundle=bundle,
+        ledgers=_load_existing_ledgers(ledger_path),
+        segment_ids=[segment_id],
+        hard_maximum_calls=args.max_api_calls,
+        hard_limit_cny=args.max_cost_cny,
+        retry_reserve_cny=args.retry_reserve_cny,
+        candidate_reserve_cny=args.candidate_reserve_cny,
+    )
+
+
+def _budget_compatibility(budget) -> dict[str, object]:
+    remaining_keyframes = sum(
+        item.remaining_api_calls
+        for item in budget.operations
+        if item.component == "first_frame"
+    )
+    remaining_render = sum(
+        item.remaining_api_calls
+        for item in budget.operations
+        if item.component in {"video", "tts"}
+    )
+    return {
+        "execution_budget": budget.model_dump(mode="json"),
+        "execution_budget_digest": budget.content_digest,
+        "planned_keyframe_calls": remaining_keyframes,
+        "planned_render_calls": remaining_render,
+        "planned_api_calls": budget.total_exposure_api_calls,
+        "planned_cost_cny": str(budget.total_exposure_cny),
+        "remaining_api_calls": budget.remaining_api_calls,
+        "committed_api_calls": budget.committed_api_calls,
+        "total_exposure_api_calls": budget.total_exposure_api_calls,
+        "remaining_cost_cny": str(budget.remaining_cost_cny),
+        "committed_cost_cny": str(budget.committed_cost_cny),
+        "total_exposure_cny": str(budget.total_exposure_cny),
+        "max_api_calls": budget.hard_maximum_calls,
+        "max_cost_cny": str(budget.hard_limit_cny),
+        "within_requested_call_limit": budget.within_call_limit,
+        "within_requested_cost_limit": budget.within_cost_limit,
+    }
+
+
+def _budget_errors(budget) -> list[str]:
+    errors = []
+    if budget.unknown_components:
+        errors.append(
+            "unknown execution budget components: "
+            + ", ".join(budget.unknown_components)
+        )
+    if not budget.within_call_limit:
+        errors.append(
+            f"total exposure {budget.total_exposure_api_calls} API calls exceeds "
+            f"limit {budget.hard_maximum_calls}"
+        )
+    if not budget.within_cost_limit:
+        errors.append(
+            f"total exposure {budget.total_exposure_cny} CNY exceeds limit "
+            f"{budget.hard_limit_cny} CNY"
+        )
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -401,50 +492,21 @@ def main(argv: list[str] | None = None) -> int:
         ).resolve()
         _atomic_write(delegated_provider_path, config.to_canonical_json())
 
-    approved_shots = {segment.segment_id}
-    planned_keyframe_calls = 1
-    planned_keyframe_cost = config.dashscope.estimate_image_cost_cny()
-    planned_render_calls = Wan27LiveTaskExecutor.estimate_api_calls(
-        materialized,
-        approved_keyframe_shots=approved_shots,
+    ledger_path = (
+        Path(args.ledger_file).resolve()
+        if args.ledger_file
+        else _default_ledger_path(output_path, segment.segment_id).resolve()
     )
-    planned_render_cost = Wan27LiveTaskExecutor.estimate_cost_cny(
-        materialized,
-        config,
-        approved_keyframe_shots=approved_shots,
-    )
-    planned_api_calls = planned_keyframe_calls + planned_render_calls
-    planned_cost_cny = planned_keyframe_cost + planned_render_cost
-    within_call_limit = 0 <= args.max_api_calls and planned_api_calls <= args.max_api_calls
-    within_cost_limit = Decimal("0") <= args.max_cost_cny and planned_cost_cny <= args.max_cost_cny
-
-    budget_metadata: dict[str, object] = {
-        "execution_budget": {
-            "currency": "CNY",
-            "price_snapshot_id": f"dashscope-{config.dashscope.price_snapshot_date}",
-            "planned_keyframe_calls": planned_keyframe_calls,
-            "planned_render_calls": planned_render_calls,
-            "planned_api_calls": planned_api_calls,
-            "planned_keyframe_cost": str(planned_keyframe_cost),
-            "planned_render_cost": str(planned_render_cost),
-            "planned_total": str(planned_cost_cny),
-            "hard_call_limit": args.max_api_calls,
-            "hard_cost_limit": str(args.max_cost_cny),
-            "within_call_limit": within_call_limit,
-            "within_cost_limit": within_cost_limit,
-            "unknown_components": [],
-        },
-        "planned_keyframe_calls": planned_keyframe_calls,
-        "planned_render_calls": planned_render_calls,
-        "planned_api_calls": planned_api_calls,
-        "planned_cost_cny": str(planned_cost_cny),
-        "max_api_calls": args.max_api_calls,
-        "max_cost_cny": str(args.max_cost_cny),
-        "within_requested_call_limit": within_call_limit,
-        "within_requested_cost_limit": within_cost_limit,
-    }
-
-    if not within_call_limit or not within_cost_limit:
+    try:
+        budget_before = _build_budget(
+            plan=plan,
+            config=config,
+            bundle=bundle,
+            ledger_path=ledger_path,
+            segment_id=segment.segment_id,
+            args=args,
+        )
+    except (OSError, ValidationError, ExecutionBudgetError) as exc:
         failure = {
             "valid": False,
             "status": "blocked",
@@ -452,23 +514,32 @@ def main(argv: list[str] | None = None) -> int:
             "credentials_present": credentials_present,
             "missing_environment": missing_environment,
             "external_api_calls": 0,
-            "committed_api_calls": 0,
-            "committed_cost_cny": "0",
+            "budget_gate": "budget_plan_invalid",
+            "errors": [str(exc)],
+            **common_metadata,
+            **asset_metadata,
+        }
+        _write_enriched_report(
+            failure,
+            report_path=args.report,
+            print_report=args.print_report,
+        )
+        print(f"provider error: execution budget is invalid: {exc}", file=sys.stderr)
+        return EXIT_PROVIDER
+
+    budget_metadata = _budget_compatibility(budget_before)
+    budget_metadata["execution_budget_before"] = budget_before.model_dump(mode="json")
+    if args.stage in _PROVIDER_BUDGET_STAGES and not budget_before.payment_approved:
+        errors = _budget_errors(budget_before)
+        failure = {
+            "valid": False,
+            "status": "blocked",
+            "stage": args.stage,
+            "credentials_present": credentials_present,
+            "missing_environment": missing_environment,
+            "external_api_calls": 0,
             "budget_gate": "blocked_before_provider_submission",
-            "errors": [
-                message
-                for condition, message in (
-                    (
-                        not within_call_limit,
-                        f"planned {planned_api_calls} API calls exceed limit {args.max_api_calls}",
-                    ),
-                    (
-                        not within_cost_limit,
-                        f"planned {planned_cost_cny} CNY exceeds limit {args.max_cost_cny} CNY",
-                    ),
-                )
-                if condition
-            ],
+            "errors": errors,
             **common_metadata,
             **asset_metadata,
             **budget_metadata,
@@ -479,8 +550,8 @@ def main(argv: list[str] | None = None) -> int:
             print_report=args.print_report,
         )
         print(
-            "provider error: segment Canary budget gate blocked all provider submissions: "
-            + "; ".join(failure["errors"]),
+            "provider error: execution budget blocked provider submission: "
+            + "; ".join(errors),
             file=sys.stderr,
         )
         return EXIT_PROVIDER
@@ -501,6 +572,8 @@ def main(argv: list[str] | None = None) -> int:
         str(args.max_api_calls),
         "--max-cost-cny",
         str(args.max_cost_cny),
+        "--ledger-file",
+        str(ledger_path),
         "--report",
         str(delegate_report),
         "--print-report",
@@ -508,7 +581,6 @@ def main(argv: list[str] | None = None) -> int:
     _append_optional(delegated, "--approved-keyframe", approved_keyframe)
     _append_optional(delegated, "--approval-manifest", approval_manifest)
     _append_optional(delegated, "--keyframe-output", args.keyframe_output)
-    _append_optional(delegated, "--ledger-file", args.ledger_file)
     _append_optional(delegated, "--work-dir", args.work_dir)
     _append_optional(delegated, "--projects-file", args.projects_file)
     _append_optional(delegated, "--index-file", args.index_file)
@@ -522,6 +594,18 @@ def main(argv: list[str] | None = None) -> int:
     ):
         exit_code = render_canary_main(delegated)
 
+    try:
+        budget_after = _build_budget(
+            plan=plan,
+            config=config,
+            bundle=bundle,
+            ledger_path=ledger_path,
+            segment_id=segment.segment_id,
+            args=args,
+        )
+    except (OSError, ValidationError, ExecutionBudgetError):
+        budget_after = budget_before
+
     payload = _load_delegate_report(delegate_report) or {
         "valid": False,
         "stage": args.stage,
@@ -530,6 +614,8 @@ def main(argv: list[str] | None = None) -> int:
     payload.update(common_metadata)
     payload.update(asset_metadata)
     payload.update(budget_metadata)
+    payload["execution_budget_after"] = budget_after.model_dump(mode="json")
+    payload["ledger_file"] = str(ledger_path)
     payload["credentials_present"] = credentials_present
     payload["missing_environment"] = missing_environment
     payload["delegate_exit_code"] = exit_code
@@ -574,7 +660,10 @@ def main(argv: list[str] | None = None) -> int:
             f"Provider request: {segment.requested_duration_seconds}s\n"
             f"Editorial duration: {segment.editorial_duration_seconds}s\n"
             f"Assets ready: {asset_readiness['ready']}\n"
-            f"Planned budget: {planned_api_calls} calls / {planned_cost_cny} CNY\n"
+            f"Budget before: {budget_before.total_exposure_api_calls} calls / "
+            f"{budget_before.total_exposure_cny} CNY\n"
+            f"Remaining after: {budget_after.remaining_api_calls} calls / "
+            f"{budget_after.remaining_cost_cny} CNY\n"
             f"External API calls this stage: {payload.get('external_api_calls', 0)}\n"
             "Status: OK"
         )
