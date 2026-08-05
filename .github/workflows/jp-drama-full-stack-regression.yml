@@ -1,0 +1,66 @@
+name: Japanese Drama Full Stack Regression
+
+on:
+  pull_request:
+    paths:
+      - "src/apps/jp_drama/full_episode/**"
+      - "src/apps/jp_drama/workflows/run_full_episode.py"
+      - "tests/test_jp_drama_full_episode_runner.py"
+      - ".github/workflows/jp-drama-full-stack-regression.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/full_episode/**"
+      - "src/apps/jp_drama/workflows/run_full_episode.py"
+      - "tests/test_jp_drama_full_episode_runner.py"
+      - ".github/workflows/jp-drama-full-stack-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-stack-regression:
+    name: Validate ActionBeat assets budget Canary and full episode stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install FFmpeg and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<9"
+
+      - name: Compile Japanese drama packages
+        run: python -m compileall -q src/apps/jp_drama
+
+      - name: Run complete stacked regression set
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_script_ingestion.py \
+            tests/test_jp_drama_action_beat_generation.py \
+            tests/test_jp_drama_generation_segments.py \
+            tests/test_jp_drama_generation_segment_canary.py \
+            tests/test_jp_drama_approved_assets.py \
+            tests/test_jp_drama_asset_gated_canary.py \
+            tests/test_jp_drama_execution_budget.py \
+            tests/test_jp_drama_full_episode_runner.py
+
+      - name: Ensure regression is provider-free
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          test -z "${DASHSCOPE_BASE_URL:-}"
+          test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' '*.png' '*.jpg' | grep -E 'jp_drama|full_episode' || true)"
