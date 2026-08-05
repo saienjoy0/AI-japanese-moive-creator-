@@ -20,7 +20,7 @@ class MiniMaxH3ProviderConfig(BaseModel):
 
     provider: Literal["minimax"] = "minimax"
     api_key_env: Literal["MINIMAX_API_KEY"] = "MINIMAX_API_KEY"
-    base_url: str = "https://api.minimax.io"
+    base_url: str = "https://api.minimaxi.com"
     model: Literal["MiniMax-H3"] = "MiniMax-H3"
     resolution: Literal["768P", "2K"] = "768P"
     ratio: Literal["9:16"] = "9:16"
