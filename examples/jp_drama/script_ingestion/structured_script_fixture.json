@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "title": "その客、新店長です",
   "synopsis": "雨の夜、客を追い返した店員が、その客こそ新しい責任者だと知る。",
   "target_duration_seconds": 45,
@@ -10,11 +10,7 @@
       "description": "正体を明かさず店を訪れる新任店長",
       "occupation": "エリアマネージャー",
       "speech_style": "静かで端的",
-      "visual_traits": [
-        "30代女性",
-        "濡れた紺色コート",
-        "落ち着いた表情"
-      ]
+      "visual_traits": ["30代女性", "濡れた紺色コート", "落ち着いた表情"]
     },
     {
       "character_id": "char_ota",
@@ -22,11 +18,7 @@
       "description": "客を外見で判断するコンビニ店員",
       "occupation": "コンビニ店員",
       "speech_style": "早口で高圧的",
-      "visual_traits": [
-        "20代男性",
-        "青い制服",
-        "短髪"
-      ]
+      "visual_traits": ["20代男性", "青い制服", "短髪"]
     }
   ],
   "scenes": [
@@ -35,10 +27,7 @@
       "location_name": "郊外型コンビニ",
       "time_of_day": "night",
       "description": "雨の夜、白い蛍光灯に照らされた店内と濡れた入口",
-      "continuity_rules": [
-        "入口の床は濡れている",
-        "商品棚とレジの位置を固定する"
-      ]
+      "continuity_rules": ["入口の床は濡れている", "商品棚とレジの位置を固定する"]
     }
   ],
   "beats": [
@@ -48,10 +37,7 @@
       "scene_id": "scene_store",
       "summary": "太田が美緒の入店を止める",
       "action": "太田が入口に立ち、美緒の前へ手を出して進路を遮る。",
-      "character_ids": [
-        "char_mio",
-        "char_ota"
-      ],
+      "character_ids": ["char_mio", "char_ota"],
       "dialogue": [
         {
           "speaker_character_id": "char_ota",
@@ -60,11 +46,53 @@
           "delivery": "早口で高圧的"
         }
       ],
+      "action_beats": [
+        {
+          "action_beat_id": "action_01_01",
+          "order": 1,
+          "summary": "美緒が雨の入口へ到着する",
+          "visual_action": "濡れた紺色コートの美緒が自動ドアの前で足を止める。",
+          "character_ids": ["char_mio"],
+          "dialogue_indexes": [],
+          "estimated_duration_seconds": 4.5,
+          "boundary_before": "scene_change",
+          "boundary_after": "action_complete",
+          "camera_hint": "入口を縦型の全景で見せる",
+          "continuity_effects": ["美緒のコートと床が雨で濡れている"],
+          "confidence": 0.98
+        },
+        {
+          "action_beat_id": "action_01_02",
+          "order": 2,
+          "summary": "太田が進路を遮る",
+          "visual_action": "太田がレジ側から歩み出て、美緒の前へ片手を伸ばす。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [],
+          "estimated_duration_seconds": 5.0,
+          "boundary_before": "camera_reframe",
+          "boundary_after": "action_complete",
+          "camera_hint": "二人の距離が分かる中景",
+          "continuity_effects": ["太田は美緒と入口の間に立つ"],
+          "confidence": 0.98
+        },
+        {
+          "action_beat_id": "action_01_03",
+          "order": 3,
+          "summary": "太田が入店拒否を告げる",
+          "visual_action": "太田が美緒を見下すように顎を上げ、進路を塞いだまま話す。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [1],
+          "estimated_duration_seconds": 5.5,
+          "boundary_before": "speaker_change",
+          "boundary_after": "reaction",
+          "camera_hint": "太田の高圧的な表情を中寄りで捉える",
+          "continuity_effects": ["美緒は無言で太田を見る"],
+          "confidence": 0.99
+        }
+      ],
       "camera_hint": "入口の二人を縦型の中景で捉える",
       "ambience": "強い雨音と冷蔵庫の低い作動音",
-      "sound_effects": [
-        "自動ドアの警告音"
-      ]
+      "sound_effects": ["自動ドアの警告音"]
     },
     {
       "beat_id": "beat_02",
@@ -72,10 +100,7 @@
       "scene_id": "scene_store",
       "summary": "美緒が本部の辞令を示す",
       "action": "美緒が濡れた鞄から辞令を取り出し、太田の目の前で開く。",
-      "character_ids": [
-        "char_mio",
-        "char_ota"
-      ],
+      "character_ids": ["char_mio", "char_ota"],
       "dialogue": [
         {
           "speaker_character_id": "char_mio",
@@ -84,11 +109,53 @@
           "delivery": "低くはっきり"
         }
       ],
+      "action_beats": [
+        {
+          "action_beat_id": "action_02_01",
+          "order": 1,
+          "summary": "美緒が鞄へ手を入れる",
+          "visual_action": "美緒が視線を外さず、濡れた鞄の留め具を開く。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [],
+          "estimated_duration_seconds": 4.5,
+          "boundary_before": "reaction",
+          "boundary_after": "action_complete",
+          "camera_hint": "美緒の手元へ寄る",
+          "continuity_effects": ["太田は入口側で片手を上げたまま"],
+          "confidence": 0.98
+        },
+        {
+          "action_beat_id": "action_02_02",
+          "order": 2,
+          "summary": "辞令を太田へ示す",
+          "visual_action": "美緒が本部の辞令を取り出して開き、太田の目の前へ向ける。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [],
+          "estimated_duration_seconds": 5.0,
+          "boundary_before": "action_complete",
+          "boundary_after": "reaction",
+          "camera_hint": "辞令の紙面から太田の目線へ移る",
+          "continuity_effects": ["辞令は美緒の右手にある"],
+          "confidence": 0.99
+        },
+        {
+          "action_beat_id": "action_02_03",
+          "order": 3,
+          "summary": "美緒が正体を明かす",
+          "visual_action": "美緒が辞令を掲げたまま、太田へ静かに言い切る。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [1],
+          "estimated_duration_seconds": 5.5,
+          "boundary_before": "speaker_change",
+          "boundary_after": "reaction",
+          "camera_hint": "美緒の落ち着いた表情から太田の動揺へ切る",
+          "continuity_effects": ["辞令は画面内に残る"],
+          "confidence": 0.99
+        }
+      ],
       "camera_hint": "辞令の手元から太田の動揺した表情へ寄る",
       "ambience": "雨音と店内の静かな機械音",
-      "sound_effects": [
-        "紙を開く音"
-      ]
+      "sound_effects": ["紙を開く音"]
     },
     {
       "beat_id": "beat_03",
@@ -96,10 +163,7 @@
       "scene_id": "scene_store",
       "summary": "美緒が最初の監査を宣言する",
       "action": "美緒が店内を見回し、太田は青ざめて一歩後ずさる。",
-      "character_ids": [
-        "char_mio",
-        "char_ota"
-      ],
+      "character_ids": ["char_mio", "char_ota"],
       "dialogue": [
         {
           "speaker_character_id": "char_mio",
@@ -108,12 +172,54 @@
           "delivery": "間を置いて端的に"
         }
       ],
+      "action_beats": [
+        {
+          "action_beat_id": "action_03_01",
+          "order": 1,
+          "summary": "美緒が店内を確認する",
+          "visual_action": "美緒が辞令を下げ、商品棚とレジ周辺をゆっくり見回す。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [],
+          "estimated_duration_seconds": 4.5,
+          "boundary_before": "reaction",
+          "boundary_after": "camera_reframe",
+          "camera_hint": "美緒の視線に沿って店内を短く見せる",
+          "continuity_effects": ["辞令は美緒の右手に下げられる"],
+          "confidence": 0.98
+        },
+        {
+          "action_beat_id": "action_03_02",
+          "order": 2,
+          "summary": "太田が後ずさる",
+          "visual_action": "太田の顔色が変わり、レジ側へ一歩後ずさる。",
+          "character_ids": ["char_ota"],
+          "dialogue_indexes": [],
+          "estimated_duration_seconds": 5.0,
+          "boundary_before": "reaction",
+          "boundary_after": "action_complete",
+          "camera_hint": "太田の青ざめた顔と後退を中景で捉える",
+          "continuity_effects": ["太田は美緒から距離を取る"],
+          "confidence": 0.99
+        },
+        {
+          "action_beat_id": "action_03_03",
+          "order": 3,
+          "summary": "美緒が監査開始を宣言する",
+          "visual_action": "美緒が太田へ向き直り、厳しい表情で監査開始を告げる。",
+          "character_ids": ["char_mio", "char_ota"],
+          "dialogue_indexes": [1],
+          "estimated_duration_seconds": 5.5,
+          "boundary_before": "speaker_change",
+          "boundary_after": "action_complete",
+          "camera_hint": "美緒の表情へゆっくり寄る",
+          "continuity_effects": ["太田は背景で青ざめたまま"],
+          "confidence": 0.99
+        }
+      ],
       "camera_hint": "美緒から太田の青ざめた顔へゆっくり寄る",
       "ambience": "雨音が遠のき緊張感が残る",
       "sound_effects": []
     }
   ],
-  "unresolved_items": [
-    "美緒の正確な年齢は台本に明記されていない"
-  ]
+  "unresolved_items": ["美緒の正確な年齢は台本に明記されていない"]
 }

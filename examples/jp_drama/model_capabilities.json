@@ -1,16 +1,21 @@
 {
-  "catalog_version": "1.0.0",
+  "catalog_version": "1.1.0",
   "profiles": [
     {
       "provider": "provider-a",
       "model": "model-v1",
-      "supported_strategies": ["video_plus_tts", "still_motion"],
+      "supported_strategies": ["video_plus_tts", "silent_video", "still_motion"],
       "capabilities": ["video_generation", "tts", "image_generation", "still_motion"],
       "fallback_costs": [
         {
           "strategy": "video_plus_tts",
           "estimated_primary_cost": 400,
           "reserved_retry_cost": 150
+        },
+        {
+          "strategy": "silent_video",
+          "estimated_primary_cost": 350,
+          "reserved_retry_cost": 100
         },
         {
           "strategy": "still_motion",
