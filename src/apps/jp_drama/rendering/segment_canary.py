@@ -6,6 +6,7 @@ import hashlib
 import json
 from decimal import Decimal
 
+from ..domain import RenderStrategy
 from ..generation.candidate_selector import readiness_issue_blocks_segment
 from ..generation.models import GenerationPlanEpisode, GenerationSegment
 from ..preparation.models import (
@@ -70,6 +71,14 @@ def validate_segment_canary_contract(
     if segment.audio_strategy == "native_av":
         raise SegmentCanaryError(
             "wan/i2v native audio is not migrated; use external_audio_post or silent"
+        )
+    if segment.audio_strategy == "silent" and segment.dialogue_slices:
+        raise SegmentCanaryError(
+            "silent Wan segment cannot contain dialogue slices"
+        )
+    if segment.audio_strategy == "external_audio_post" and not segment.dialogue_slices:
+        raise SegmentCanaryError(
+            "external-audio Wan segment must contain at least one dialogue slice"
         )
 
     provider_frame_count = segment.requested_duration_seconds * segment.timeline_fps
@@ -154,70 +163,71 @@ def _rebuild_mapping_trace(
     )
 
 
-def _node_by_type(selected: PreparedEpisode, task_type: str) -> RenderTaskNode:
-    matches = [
-        node for node in selected.render_graph.nodes if node.task_type == task_type
-    ]
-    if len(matches) != 1:
-        raise SegmentCanaryError(
-            f"source render graph has no unique {task_type} task"
-        )
-    return matches[0]
-
-
 def _rebuild_render_graph(
     selected: PreparedEpisode,
     segment: GenerationSegment,
-) -> tuple[RenderGraph, list[str]]:
-    """Rebuild tasks so a silent slice cannot inherit paid TTS from its parent shot."""
-    visual = _node_by_type(selected, "generate_video")
-    visual_id = f"{visual.task_id}__{segment.segment_id}"
-    visual_node = visual.model_copy(
-        update={
-            "task_id": visual_id,
-            "shot_id": segment.segment_id,
-            "depends_on": [],
-        }
-    )
+) -> tuple[RenderGraph, list[str], RenderStrategy]:
+    """Build the Wan task graph from the segment contract, not its parent strategy."""
+    prefix = f"{selected.episode_id}_{segment.segment_id}"
+
+    def node(
+        task_type: str,
+        depends_on: list[str],
+        *,
+        external: bool,
+        provider: bool,
+    ) -> RenderTaskNode:
+        return RenderTaskNode(
+            task_id=f"{prefix}_{task_type}",
+            shot_id=segment.segment_id,
+            task_type=task_type,
+            depends_on=[f"{prefix}_{item}" for item in depends_on],
+            external_api_required=external,
+            provider_required=provider,
+        )
 
     if segment.audio_strategy == "silent":
-        source_final = _node_by_type(selected, "finalize_shot")
-        final_node = source_final.model_copy(
-            update={
-                "task_id": f"{source_final.task_id}__{segment.segment_id}",
-                "shot_id": segment.segment_id,
-                "depends_on": [visual_id],
-            }
+        tasks = ["generate_video", "finalize_shot"]
+        graph = RenderGraph(
+            nodes=[
+                node("generate_video", [], external=True, provider=True),
+                node(
+                    "finalize_shot",
+                    ["generate_video"],
+                    external=False,
+                    provider=False,
+                ),
+            ]
         )
-        return RenderGraph(nodes=[visual_node, final_node]), [
-            "generate_video",
-            "finalize_shot",
-        ]
+        return graph, tasks, RenderStrategy.SILENT_VIDEO
 
-    required_types = [
+    tasks = [
         "generate_video",
         "generate_tts",
         "generate_subtitles",
         "mux_audio_video",
         "finalize_shot",
     ]
-    originals = {task_type: _node_by_type(selected, task_type) for task_type in required_types}
-    task_id_map = {
-        node.task_id: f"{node.task_id}__{segment.segment_id}"
-        for node in originals.values()
-    }
-    rebuilt = [
-        node.model_copy(
-            update={
-                "task_id": task_id_map[node.task_id],
-                "shot_id": segment.segment_id,
-                "depends_on": [task_id_map[item] for item in node.depends_on],
-            }
-        )
-        for task_type in required_types
-        for node in [originals[task_type]]
-    ]
-    return RenderGraph(nodes=rebuilt), required_types
+    graph = RenderGraph(
+        nodes=[
+            node("generate_video", [], external=True, provider=True),
+            node("generate_tts", [], external=True, provider=True),
+            node("generate_subtitles", [], external=False, provider=False),
+            node(
+                "mux_audio_video",
+                ["generate_video", "generate_tts", "generate_subtitles"],
+                external=False,
+                provider=False,
+            ),
+            node(
+                "finalize_shot",
+                ["mux_audio_video"],
+                external=False,
+                provider=False,
+            ),
+        ]
+    )
+    return graph, tasks, RenderStrategy.VIDEO_PLUS_TTS
 
 
 def materialize_generation_segment_canary(
@@ -241,17 +251,6 @@ def materialize_generation_segment_canary(
     frame = selected.storyboard_frame_drafts[0]
     intent = selected.render_intents[0]
 
-    task_types = {node.task_type for node in selected.render_graph.nodes}
-    if "generate_video" not in task_types:
-        raise SegmentCanaryError(
-            "source render graph has no generate_video task for wan/i2v"
-        )
-    if segment.audio_strategy == "external_audio_post":
-        if segment.dialogue_slices and "generate_tts" not in task_types:
-            raise SegmentCanaryError(
-                "source render graph has dialogue but no generate_tts task"
-            )
-
     fps = segment.timeline_fps
     handle_offset_seconds = segment.used_start_frame / fps
     dialogue = [
@@ -269,13 +268,17 @@ def materialize_generation_segment_canary(
 
     editorial = segment.editorial_shots[0]
     new_intent_id = f"{intent.intent_id}__{segment.segment_id}"
-    rebuilt_graph, rebuilt_tasks = _rebuild_render_graph(selected, segment)
+    rebuilt_graph, rebuilt_tasks, rebuilt_strategy = _rebuild_render_graph(
+        selected,
+        segment,
+    )
     selected.render_graph = rebuilt_graph
     selected.render_intents = [
         intent.model_copy(
             update={
                 "intent_id": new_intent_id,
                 "shot_id": segment.segment_id,
+                "resolved_strategy": rebuilt_strategy,
                 "tasks": rebuilt_tasks,
             }
         )
@@ -325,7 +328,12 @@ def materialize_generation_segment_canary(
     ]
 
     selected.budget_snapshot.shot_items = [
-        item.model_copy(update={"shot_id": segment.segment_id})
+        item.model_copy(
+            update={
+                "shot_id": segment.segment_id,
+                "strategy": rebuilt_strategy,
+            }
+        )
         for item in selected.budget_snapshot.shot_items
     ]
     subtotal = sum(
