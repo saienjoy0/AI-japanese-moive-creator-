@@ -122,17 +122,32 @@ class MiniMaxH3Client:
         )
         data = self._decode_response(status, body)
         task = data.get("task") if isinstance(data.get("task"), dict) else data
-        provider_status = str(task.get("status") or data.get("status") or "").lower()
+        raw_status = str(task.get("status") or data.get("status") or "").lower()
+        provider_status = {
+            "queueing": "queued",
+            "processing": "running",
+            "success": "succeeded",
+            "fail": "failed",
+            "canceled": "cancelled",
+        }.get(raw_status, raw_status)
         if provider_status not in {"queued", "running", "succeeded", "failed", "cancelled"}:
             raise MiniMaxH3ClientError(
                 f"MiniMax H3 returned unknown task status: {provider_status or '<empty>'}",
                 status_code=status,
             )
         content = task.get("content") if isinstance(task.get("content"), dict) else {}
+        nested_video_url = content.get("video_url")
         output_url = (
             content.get("url")
+            or (
+                nested_video_url.get("url")
+                if isinstance(nested_video_url, dict)
+                else nested_video_url
+                if isinstance(nested_video_url, str)
+                else None
+            )
             or task.get("url")
-            or _find_first_string(data, "video_url", "file_url")
+            or _find_first_string(data, "video_url", "file_url", "url")
         )
         error = _extract_error_message(data) if provider_status in {"failed", "cancelled"} else None
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
