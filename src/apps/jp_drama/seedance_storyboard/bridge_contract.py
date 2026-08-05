@@ -1,6 +1,6 @@
 """Safety wrapper around the Seedance storyboard production bridge.
 
-The base bridge performs provider-specific compilation.  This module rebuilds
+The base bridge performs provider-specific compilation. This module rebuilds
 continuity requirements by actual continuity group and prevents a continuation
 storyboard from being reported execution-ready until its previous-video asset
 can be hash-bound by the approved-asset contract.
@@ -72,13 +72,28 @@ def compile_storyboard_generation_plan(
             "errors": errors,
         }
     )
-    payload = plan.model_dump(mode="python", exclude={"content_digest"})
-    payload.update(
+    # Keep nested Pydantic models typed while the canonical digest is computed.
+    # Dumping them to dicts before model_construct changes serializer behavior
+    # and creates a digest that no longer matches the validated model.
+    return GenerationPlanEpisode.build_with_digest(
+        schema_version=plan.schema_version,
+        compiler_version=plan.compiler_version,
+        generation_plan_episode_id=plan.generation_plan_episode_id,
+        source_episode_id=plan.source_episode_id,
+        source_prepared_episode_digest=plan.source_prepared_episode_digest,
+        policy_digest=plan.policy_digest,
+        provider_profile_id=plan.provider_profile_id,
+        provider_route_id=plan.provider_route_id,
+        timeline_fps=plan.timeline_fps,
+        target_frame_count=plan.target_frame_count,
+        target_duration_seconds=plan.target_duration_seconds,
+        segments=plan.segments,
         continuity_contracts=contracts,
         reference_asset_requirements=requirements,
+        render_graph=plan.render_graph,
+        cost_plan=plan.cost_plan,
         readiness_report=readiness,
     )
-    return GenerationPlanEpisode.build_with_digest(**payload)
 
 
 def _rebuild_continuity(
