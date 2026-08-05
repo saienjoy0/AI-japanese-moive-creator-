@@ -1,0 +1,191 @@
+name: Japanese Drama MiniMax H3 Paid Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      prepared_input:
+        description: PreparedEpisode JSON path committed on this ref
+        required: true
+        type: string
+      generation_plan:
+        description: GenerationPlanEpisode JSON path committed on this ref
+        required: true
+        type: string
+      segment_id:
+        description: Exactly one registered MiniMax H3 segment ID
+        required: true
+        type: string
+      assets:
+        description: Public HTTPS H3 asset manifest path committed on this ref
+        required: true
+        type: string
+      max_cost_usd:
+        description: Immutable H3 cost ceiling, at most 1.00
+        required: true
+        default: "1.00"
+        type: string
+      confirm_paid_run:
+        description: Type RUN_ONE_PAID_H3_SEGMENT
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PREPARED_INPUT: ${{ inputs.prepared_input }}
+  GENERATION_PLAN: ${{ inputs.generation_plan }}
+  SEGMENT_ID: ${{ inputs.segment_id }}
+  ASSET_MANIFEST: ${{ inputs.assets }}
+  MAX_COST_USD: ${{ inputs.max_cost_usd }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Require explicit paid-run phrase
+        env:
+          CONFIRM_PAID_RUN: ${{ inputs.confirm_paid_run }}
+        run: test "$CONFIRM_PAID_RUN" = "RUN_ONE_PAID_H3_SEGMENT"
+      - name: Enforce one-dollar maximum
+        run: |
+          python - <<'PY'
+          import os
+          from decimal import Decimal
+          value = Decimal(os.environ["MAX_COST_USD"])
+          assert Decimal("0") <= value <= Decimal("1.00")
+          PY
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+      - name: Verify exact inputs exist
+        run: |
+          test -f "$PREPARED_INPUT"
+          test -f "$GENERATION_PLAN"
+          test -f "$ASSET_MANIFEST"
+      - name: Preflight and seal exact request
+        env:
+          MINIMAX_API_KEY: ""
+        run: |
+          mkdir -p output/jp_drama/h3-paid-approval
+          COMMON_ARGS=(
+            --prepared-input "$PREPARED_INPUT"
+            --generation-plan "$GENERATION_PLAN"
+            --segment-id "$SEGMENT_ID"
+            --assets "$ASSET_MANIFEST"
+            --config examples/jp_drama/minimax_h3_live_provider.json
+            --output output/jp_drama/h3-paid-approval/segment.mp4
+            --max-cost-usd "$MAX_COST_USD"
+            --approval-manifest output/jp_drama/h3-paid-approval/approval.json
+            --ledger-file output/jp_drama/h3-paid-approval/ledger.json
+          )
+          python -m src.apps.jp_drama.workflows.render_minimax_h3_segment_canary \
+            "${COMMON_ARGS[@]}" --stage preflight \
+            --report output/jp_drama/h3-paid-approval/preflight.json
+          python -m src.apps.jp_drama.workflows.render_minimax_h3_segment_canary \
+            "${COMMON_ARGS[@]}" --stage approve \
+            --report output/jp_drama/h3-paid-approval/approve.json
+          test ! -e output/jp_drama/h3-paid-approval/ledger.json
+      - name: Upload sealed approval bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-minimax-h3-approval-${{ inputs.segment_id }}
+          path: output/jp_drama/h3-paid-approval
+          if-no-files-found: error
+          retention-days: 7
+
+  render:
+    needs: preflight
+    runs-on: [self-hosted, minimax-h3-paid]
+    timeout-minutes: 40
+    environment: minimax-h3-paid
+    concurrency:
+      group: jp-drama-minimax-h3-paid-${{ github.ref }}-${{ inputs.segment_id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+      - name: Download sealed approval bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: jp-drama-minimax-h3-approval-${{ inputs.segment_id }}
+          path: output/jp_drama/h3-paid-approval
+      - name: Resolve persistent one-POST state directory
+        run: |
+          REPO_KEY="${GITHUB_REPOSITORY//\//_}"
+          SAFE_REF="${GITHUB_REF_NAME//\//_}"
+          SAFE_SEGMENT="${SEGMENT_ID//\//_}"
+          STATE_DIR="$RUNNER_WORKSPACE/.h3-paid-state/$REPO_KEY/$SAFE_REF/$SAFE_SEGMENT"
+          mkdir -p "$STATE_DIR"
+          printf 'STATE_DIR=%s\n' "$STATE_DIR" >> "$GITHUB_ENV"
+      - name: Render or resume exactly one approved H3 segment
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          test -n "$MINIMAX_API_KEY"
+          APPROVAL=output/jp_drama/h3-paid-approval/approval.json
+          STAGE=render
+          if test -e "$STATE_DIR/ledger.json"; then
+            STAGE=resume
+          fi
+          python -m src.apps.jp_drama.workflows.render_minimax_h3_segment_canary \
+            --prepared-input "$PREPARED_INPUT" \
+            --generation-plan "$GENERATION_PLAN" \
+            --segment-id "$SEGMENT_ID" \
+            --assets "$ASSET_MANIFEST" \
+            --config examples/jp_drama/minimax_h3_live_provider.json \
+            --output "$STATE_DIR/segment.mp4" \
+            --stage "$STAGE" \
+            --max-cost-usd "$MAX_COST_USD" \
+            --approval-manifest "$APPROVAL" \
+            --ledger-file "$STATE_DIR/ledger.json" \
+            --prepared-request-output "$STATE_DIR/prepared-request.json" \
+            --report "$STATE_DIR/render.json"
+      - name: Verify durable one-POST ledger
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          state = Path(os.environ["STATE_DIR"])
+          ledger = json.loads((state / "ledger.json").read_text())
+          assert ledger["status"] == "validated"
+          assert ledger["submission_attempts"] == 1
+          assert ledger["external_api_calls"] == 1
+          assert (state / "segment.mp4").is_file()
+          PY
+      - name: Copy evidence for artifact upload
+        if: always()
+        run: |
+          rm -rf output/jp_drama/h3-paid-result
+          mkdir -p output/jp_drama/h3-paid-result
+          if test -n "${STATE_DIR:-}" && test -d "$STATE_DIR"; then
+            cp -a "$STATE_DIR/." output/jp_drama/h3-paid-result/
+          fi
+      - name: Upload paid Canary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-minimax-h3-paid-${{ inputs.segment_id }}
+          path: output/jp_drama/h3-paid-result
+          if-no-files-found: warn
+          retention-days: 14

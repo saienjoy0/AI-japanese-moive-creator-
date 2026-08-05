@@ -1,0 +1,22 @@
+{
+  "provider": "minimax",
+  "api_key_env": "MINIMAX_API_KEY",
+  "base_url": "https://api.minimax.io",
+  "model": "MiniMax-H3",
+  "resolution": "768P",
+  "ratio": "9:16",
+  "poll_interval_seconds": 10,
+  "max_poll_seconds": 1800,
+  "request_timeout_seconds": 60,
+  "download_timeout_seconds": 300,
+  "max_poll_retries": 10,
+  "max_download_retries": 3,
+  "max_request_bytes": 67108864,
+  "output_cost_usd_per_second_768p": "0.08",
+  "output_cost_usd_per_second_2k": "0.13",
+  "video_input_cost_usd_per_second_768p": "0.08",
+  "video_input_cost_usd_per_second_2k": "0.13",
+  "extra_image_cost_usd": "0.04",
+  "free_image_count": 5,
+  "price_snapshot_date": "2026-08-05"
+}
