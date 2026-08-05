@@ -7,9 +7,10 @@
   "generated_at": "2026-08-05",
   "source": "ChatGPT image generation from pinned asset catalogue prompts",
   "source_catalog": "saienjoy0/Storyboard-Generator@3070100f6ff25a3994a749b240f423f703cd294f:projects/一房の葡萄/一房の葡萄_asset_catalog.yaml",
-  "approval_status": "pending_human_review",
+  "approval_status": "human_approved",
   "notes": [
-    "These files are candidate master references, not approved AssetBundle entries yet.",
+    "The project owner visually reviewed and approved all 17 master reference images.",
+    "This approval covers master reference images only; voice identities and generated first frames remain separate approvals.",
     "P05 retains the source instance rule: E02 and E03 must represent different grape bunch instances."
   ],
   "assets": [
@@ -21,7 +22,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "C02",
@@ -31,7 +34,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "C03",
@@ -41,7 +46,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "C90",
@@ -51,7 +58,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "C91",
@@ -61,7 +70,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P01",
@@ -71,7 +82,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P02",
@@ -81,7 +94,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P03",
@@ -91,7 +106,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P04",
@@ -101,7 +118,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P05",
@@ -111,7 +130,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P06",
@@ -121,7 +142,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "P07",
@@ -131,7 +154,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "S01",
@@ -141,7 +166,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "S02",
@@ -151,7 +178,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "S03",
@@ -161,7 +190,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "S04",
@@ -171,7 +202,9 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     },
     {
       "asset_id": "S05",
@@ -181,7 +214,13 @@
       "width": 941,
       "height": 1672,
       "format": "PNG",
-      "status": "generated_pending_human_approval"
+      "status": "human_approved",
+      "approved_by": "saienjoy0",
+      "approved_at": "2026-08-05T23:20:00+09:00"
     }
-  ]
+  ],
+  "approval_scope": "master_reference_images_only",
+  "approved_by": "saienjoy0",
+  "approved_at": "2026-08-05T23:20:00+09:00",
+  "voice_identity_status": "pending"
 }
