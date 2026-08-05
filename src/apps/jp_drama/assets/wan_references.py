@@ -53,7 +53,7 @@ class WanMasterReferenceManifest(WanReferenceModel):
         WAN_MASTER_REFERENCE_SCHEMA_VERSION
     )
     generation_plan_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
-    asset_bundle_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    master_asset_set_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     segment_id: str = Field(min_length=1)
     provider_route_id: Literal["wan/i2v"] = "wan/i2v"
     references: list[WanMasterReference] = Field(min_length=1, max_length=9)
@@ -67,6 +67,8 @@ class WanMasterReferenceManifest(WanReferenceModel):
         orders = [item.order for item in self.references]
         if orders != list(range(len(self.references))):
             raise ValueError("Wan master reference order must be contiguous")
+        if self.master_asset_set_digest != _master_asset_set_digest(self.references):
+            raise ValueError("Wan master asset-set digest does not match references")
         if self.content_digest != self.compute_content_digest():
             raise ValueError("Wan master reference manifest digest does not match content")
         return self
@@ -158,7 +160,7 @@ def build_wan_master_reference_manifest(
         references.append(_materialize_reference(asset, order))
     return WanMasterReferenceManifest.build_with_digest(
         generation_plan_digest=plan.content_digest,
-        asset_bundle_digest=bundle.content_digest,
+        master_asset_set_digest=_master_asset_set_digest(references),
         segment_id=segment.segment_id,
         provider_route_id="wan/i2v",
         references=references,
@@ -181,7 +183,7 @@ def verify_wan_master_reference_manifest(
     )
     if rebuilt.content_digest != manifest.content_digest:
         raise WanMasterReferenceError(
-            "Wan master reference files, plan, or AssetBundle changed"
+            "Wan master reference files, plan, or approved master assets changed"
         )
     return rebuilt
 
@@ -221,6 +223,30 @@ def write_wan_master_reference_manifest(
         if os.path.exists(temporary):
             os.unlink(temporary)
     return destination
+
+
+def _master_asset_set_digest(references: list[WanMasterReference]) -> str:
+    payload = [
+        {
+            "asset_id": item.asset_id,
+            "role": item.role,
+            "subject_id": item.subject_id,
+            "order": item.order,
+            "asset_sha256": item.asset_sha256,
+            "width": item.width,
+            "height": item.height,
+            "generated_by": item.generated_by,
+            "operation_id": item.operation_id,
+        }
+        for item in references
+    ]
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
 
 
 def _find_wan_segment(
