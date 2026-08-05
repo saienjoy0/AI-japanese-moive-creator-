@@ -52,6 +52,8 @@ class SegmentArtifact(ProductionModel):
     def validate_success(self) -> "SegmentArtifact":
         if self.valid and self.errors:
             raise ValueError("valid segment artifact cannot contain errors")
+        if self.valid and self.approval_digest is None:
+            raise ValueError("valid segment artifact requires approval_digest")
         if not self.valid and not self.errors:
             raise ValueError("invalid segment artifact requires at least one error")
         return self
