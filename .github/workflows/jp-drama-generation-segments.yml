@@ -1,0 +1,125 @@
+name: Japanese Drama Adaptive Generation Segments
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/apps/jp_drama/generation/**"
+      - "src/apps/jp_drama/workflows/prepare_generation.py"
+      - "tests/test_jp_drama_generation_segments.py"
+      - "examples/jp_drama/generation/**"
+      - "docs/pr11-adaptive-generation-segment-compiler.md"
+      - ".github/workflows/jp-drama-generation-segments.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/generation/**"
+      - "src/apps/jp_drama/workflows/prepare_generation.py"
+      - "tests/test_jp_drama_generation_segments.py"
+      - "examples/jp_drama/generation/**"
+      - "docs/pr11-adaptive-generation-segment-compiler.md"
+      - ".github/workflows/jp-drama-generation-segments.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jp-drama-generation-segments-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  adaptive-generation-segments:
+    name: Compile adaptive generation segments without paid calls
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<9"
+
+      - name: Compile Japanese drama packages
+        run: python -m compileall -q src/apps/jp_drama
+
+      - name: Run focused tests
+        run: python -m pytest -q tests/test_jp_drama_generation_segments.py
+
+      - name: Produce PreparedEpisode fixture
+        run: |
+          rm -rf output/jp_drama/pr11-prepared
+          python -m src.apps.jp_drama.workflows.prepare_episode \
+            --input examples/jp_drama/minimal_episode_package.json \
+            --output output/jp_drama/pr11-prepared \
+            --catalog examples/jp_drama/model_capabilities.json \
+            --strict
+
+      - name: Run deterministic generation compiler twice
+        run: |
+          rm -rf output/jp_drama/pr11-first output/jp_drama/pr11-second
+          python -m src.apps.jp_drama.workflows.prepare_generation \
+            --input output/jp_drama/pr11-prepared/prepared_episode.json \
+            --output-dir output/jp_drama/pr11-first \
+            --profile examples/jp_drama/generation/mock_profile.json \
+            --print-report
+          python -m src.apps.jp_drama.workflows.prepare_generation \
+            --input output/jp_drama/pr11-prepared/prepared_episode.json \
+            --output-dir output/jp_drama/pr11-second \
+            --profile examples/jp_drama/generation/mock_profile.json
+          diff -ru output/jp_drama/pr11-first output/jp_drama/pr11-second
+
+      - name: Verify contract and zero paid calls
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("output/jp_drama/pr11-first")
+          expected = {
+              "generation_plan_episode.json",
+              "generation_segments.json",
+              "editorial_shots.json",
+              "continuity_contracts.json",
+              "reference_asset_requirements.json",
+              "generation_render_graph.json",
+              "generation_cost_plan.json",
+              "generation_readiness_report.json",
+              "summary.txt",
+          }
+          assert {item.name for item in root.iterdir()} == expected
+          plan = json.loads((root / "generation_plan_episode.json").read_text())
+          report = json.loads((root / "generation_readiness_report.json").read_text())
+          assert len(plan["segments"]) == 6
+          assert sum(item["editorial_frame_count"] for item in plan["segments"]) == 1350
+          assert len({item["requested_duration_seconds"] for item in plan["segments"]}) > 1
+          assert report["planning_ready"] is True
+          assert report["execution_route_ready"] is True
+          assert report["media_quality_validated"] is False
+          assert report["external_api_calls"] == 0
+          PY
+
+      - name: Ensure no generated media is committed
+        run: |
+          test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' '*.png' '*.jpg' '*.jpeg')"
+
+      - name: Upload generation segment contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-generation-segment-contract
+          path: output/jp_drama/pr11-first
+          if-no-files-found: error
+          retention-days: 7
