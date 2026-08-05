@@ -1,7 +1,7 @@
 {
   "provider": "minimax",
   "api_key_env": "MINIMAX_API_KEY",
-  "base_url": "https://api.minimax.io",
+  "base_url": "https://api.minimaxi.com",
   "model": "MiniMax-H3",
   "resolution": "768P",
   "ratio": "9:16",
