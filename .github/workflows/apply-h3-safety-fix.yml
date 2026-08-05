@@ -1,5 +1,6 @@
 name: Apply H3 Safety Fix
 
+# Trigger the already-staged, reviewed patch after the workflow exists on the branch.
 on:
   push:
     branches: [feature/jp-drama-minimax-h3-core]
