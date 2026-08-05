@@ -105,9 +105,25 @@ def compile_episode_generation_plan(
         )
         for contract in raw.continuity_contracts
     ]
-    payload = raw.model_dump(mode="python", exclude={"content_digest"})
-    payload["continuity_contracts"] = contracts
-    return GenerationPlanEpisode.build_with_digest(**payload)
+    return GenerationPlanEpisode.build_with_digest(
+        schema_version=raw.schema_version,
+        compiler_version=raw.compiler_version,
+        generation_plan_episode_id=raw.generation_plan_episode_id,
+        source_episode_id=raw.source_episode_id,
+        source_prepared_episode_digest=raw.source_prepared_episode_digest,
+        policy_digest=raw.policy_digest,
+        provider_profile_id=raw.provider_profile_id,
+        provider_route_id=raw.provider_route_id,
+        timeline_fps=raw.timeline_fps,
+        target_frame_count=raw.target_frame_count,
+        target_duration_seconds=raw.target_duration_seconds,
+        segments=raw.segments,
+        continuity_contracts=contracts,
+        reference_asset_requirements=raw.reference_asset_requirements,
+        render_graph=raw.render_graph,
+        cost_plan=raw.cost_plan,
+        readiness_report=raw.readiness_report,
+    )
 
 
 def _episode_prop_prompt(
