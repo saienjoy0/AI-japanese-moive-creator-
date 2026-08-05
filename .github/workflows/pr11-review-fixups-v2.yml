@@ -41,7 +41,6 @@ jobs:
           )
 
           replacement_call = "text = text.replace(old, new, 1)"
-
           block_start = script.index("old = '''    if (")
           block_end = script.index(replacement_call, block_start) + len(replacement_call)
           flexible_condition_patch = '''needle = (
@@ -60,13 +59,110 @@ jobs:
           text = text.replace(needle, expanded, 1)'''
           script = script[:block_start] + flexible_condition_patch + script[block_end:]
 
-          block_start = script.index('old = "import sys\\nfrom pathlib')
-          block_end = script.index(replacement_call, block_start) + len(replacement_call)
-          flexible_import_patch = '''if "import pytest\\n" not in text:
+          tail_start = script.index('tests = Path("tests/test_jp_drama_generation_segments.py")')
+          tail_end_marker = 'docs.write_text(text, encoding="utf-8")'
+          tail_end = script.index(tail_end_marker, tail_start) + len(tail_end_marker)
+          robust_tail = '''tests = Path("tests/test_jp_drama_generation_segments.py")
+          text = tests.read_text(encoding="utf-8")
+          if "import pytest\\n" not in text:
               anchor = "from pathlib import Path\\n"
               assert anchor in text
-              text = text.replace(anchor, anchor + "\\nimport pytest\\n", 1)'''
-          script = script[:block_start] + flexible_import_patch + script[block_end:]
+              text = text.replace(anchor, anchor + "\\nimport pytest\\n", 1)
+          if "from src.apps.jp_drama.generation import serialization as serialization_module" not in text:
+              anchor = "from src.apps.jp_drama.preparation.compiler import load_model_catalog\\n"
+              assert anchor in text
+              text = text.replace(
+                  anchor,
+                  "from src.apps.jp_drama.generation import serialization as serialization_module\\n"
+                  "from src.apps.jp_drama.generation.serialization import write_generation_artifacts\\n"
+                  + anchor,
+                  1,
+              )
+          if "plan.cost_plan.reference_image_calls\\n        + plan.cost_plan.video_calls" not in text:
+              anchor = "    assert plan.cost_plan.expected_calls == 8\\n"
+              assert anchor in text
+              text = text.replace(
+                  anchor,
+                  anchor
+                  + "    assert plan.cost_plan.native_audio_calls > 0\\n"
+                  + "    assert plan.cost_plan.expected_calls == (\\n"
+                  + "        plan.cost_plan.reference_image_calls\\n"
+                  + "        + plan.cost_plan.video_calls\\n"
+                  + "        + plan.cost_plan.tts_calls\\n"
+                  + "    )\\n"
+                  + "    assert \\\"reference_assets_missing\\\" in {\\n"
+                  + "        item.code for item in plan.readiness_report.warnings\\n"
+                  + "    }\\n",
+                  1,
+              )
+          if "def test_output_directory_transaction_preserves_existing_on_failure" not in text:
+              text += '''\\n\\ndef test_output_directory_transaction_preserves_existing_on_failure(
+              tmp_path: Path,
+              monkeypatch: pytest.MonkeyPatch,
+          ) -> None:
+              plan = compile_generation_plan(
+                  _prepared(),
+                  profile=ProviderSegmentationProfile.load(PROFILE_PATH),
+                  registry=_mock_registry(),
+              )
+              destination = tmp_path / "generation"
+              write_generation_artifacts(plan, destination)
+              before = {item.name: item.read_bytes() for item in destination.iterdir()}
+
+              real_atomic_write = serialization_module._atomic_write
+              calls = 0
+
+              def fail_during_staging(path: Path, content: str) -> None:
+                  nonlocal calls
+                  calls += 1
+                  if calls == 2:
+                      raise OSError("injected staging failure")
+                  real_atomic_write(path, content)
+
+              monkeypatch.setattr(serialization_module, "_atomic_write", fail_during_staging)
+              with pytest.raises(OSError, match="injected staging failure"):
+                  write_generation_artifacts(plan, destination, overwrite=True)
+
+              after = {item.name: item.read_bytes() for item in destination.iterdir()}
+              assert after == before
+              assert not list(tmp_path.glob(".generation.staging-*"))
+
+
+def test_low_complexity_dialogue_does_not_use_conditional_15_seconds() -> None:
+              plan = compile_generation_plan(
+                  _prepared(),
+                  profile=ProviderSegmentationProfile.load(PROFILE_PATH),
+                  registry=_mock_registry(),
+              )
+              assert all(
+                  segment.requested_duration_seconds < 15
+                  for segment in plan.segments
+                  if segment.dialogue_slices
+              )
+          '''
+          tests.write_text(text, encoding="utf-8")
+
+          docs = Path("docs/pr11-adaptive-generation-segment-compiler.md")
+          text = docs.read_text(encoding="utf-8")
+          text = text.replace(
+              "All writes are atomic. The same source, profile, and registered capabilities\\n",
+              "All artifacts are staged in a sibling directory and published as one directory\\n"
+              "transaction, with rollback protection when overwriting. The same source, profile,\\n"
+              "and registered capabilities\\n",
+              1,
+          )
+          if "native_audio_calls` records native-AV usage" not in text:
+              anchor = "Known adapter costs are totaled by currency. Currencies are not automatically\\n"
+              assert anchor in text
+              text = text.replace(
+                  anchor,
+                  "`native_audio_calls` records native-AV usage but does not add a second API call;\\n"
+                  "native audio is produced by the same video submission.\\n\\n"
+                  + anchor,
+                  1,
+              )
+          docs.write_text(text, encoding="utf-8")'''
+          script = script[:tail_start] + robust_tail + script[tail_end:]
 
           exec(compile(script, "pr11-review-fixups", "exec"))
           PY
