@@ -10,10 +10,12 @@ from src.apps.jp_drama.assets.models import ApprovedAssetBundle
 from src.apps.jp_drama.generation.models import GenerationPlanEpisode
 from src.apps.jp_drama.preparation.models import PreparedEpisode
 from src.apps.jp_drama.series_plan import (
+    SUPPORTED_ROUTES,
     SeriesPlanError,
     SeriesProductionManifest,
     load_series_inputs,
 )
+import src.apps.jp_drama.workflows.import_series_production_plan as importer_workflow
 from src.apps.jp_drama.workflows.import_series_production_plan import main
 
 
@@ -34,29 +36,35 @@ def _source_paths() -> tuple[Path, Path]:
     )
 
 
+def _cli_args(
+    series_plan: Path,
+    asset_catalog: Path,
+    output: Path,
+) -> list[str]:
+    return [
+        "--series-plan",
+        str(series_plan),
+        "--asset-catalog",
+        str(asset_catalog),
+        "--output-dir",
+        str(output),
+        "--live-provider-config",
+        str(LIVE_CONFIG),
+        "--minimax-h3-config",
+        str(H3_CONFIG),
+        "--source-commit",
+        SOURCE_COMMIT,
+        "--require-route-ready",
+    ]
+
+
 def test_real_one_bunch_series_import_preserves_three_episode_contract(
     tmp_path: Path,
 ) -> None:
     series_plan, asset_catalog = _source_paths()
     output = tmp_path / "series"
 
-    result = main(
-        [
-            "--series-plan",
-            str(series_plan),
-            "--asset-catalog",
-            str(asset_catalog),
-            "--output-dir",
-            str(output),
-            "--live-provider-config",
-            str(LIVE_CONFIG),
-            "--minimax-h3-config",
-            str(H3_CONFIG),
-            "--source-commit",
-            SOURCE_COMMIT,
-            "--require-route-ready",
-        ]
-    )
+    result = main(_cli_args(series_plan, asset_catalog, output))
 
     assert result == 0
     report = json.loads((output / "import_report.json").read_text(encoding="utf-8"))
@@ -66,6 +74,7 @@ def test_real_one_bunch_series_import_preserves_three_episode_contract(
     assert report["segment_count"] == 15
     assert report["routes"] == ["h3", "wan", "seedance"]
     assert report["route_blockers"] == []
+    assert report["series_manifest"] == "series_manifest.json"
 
     manifest = SeriesProductionManifest.model_validate_json(
         (output / "series_manifest.json").read_text(encoding="utf-8")
@@ -75,6 +84,8 @@ def test_real_one_bunch_series_import_preserves_three_episode_contract(
     assert manifest.rights_status == "public_domain"
     assert manifest.source_repository == "saienjoy0/Storyboard-Generator"
     assert manifest.source_commit == SOURCE_COMMIT
+    assert manifest.series_plan_file == "projects/一房の葡萄/一房の葡萄_generation_plan.yaml"
+    assert manifest.asset_catalog_file == "projects/一房の葡萄/一房の葡萄_asset_catalog.yaml"
     assert manifest.episode_count == 3
     assert manifest.segment_count == 15
     assert manifest.timeline_fps == 24
@@ -85,6 +96,16 @@ def test_real_one_bunch_series_import_preserves_three_episode_contract(
     expected_ids = ["E01", "E02", "E03"]
     all_dialogue_counts: dict[str, int] = {}
     for number, episode_id in enumerate(expected_ids, start=1):
+        manifest_episode = manifest.episodes[number - 1]
+        assert not Path(manifest_episode.prepared_episode_file).is_absolute()
+        assert output.joinpath(manifest_episode.prepared_episode_file).is_file()
+        for path in manifest_episode.generation_plan_files.values():
+            assert not Path(path).is_absolute()
+            assert output.joinpath(path).is_file()
+        for path in manifest_episode.asset_bundle_files.values():
+            assert not Path(path).is_absolute()
+            assert output.joinpath(path).is_file()
+
         episode_dir = output / episode_id
         prepared = PreparedEpisode.model_validate_json(
             (episode_dir / "prepared_episode.json").read_text(encoding="utf-8")
@@ -97,6 +118,19 @@ def test_real_one_bunch_series_import_preserves_three_episode_contract(
         assert sum(item.duration_seconds for item in prepared.storyboard_frame_drafts) == 50
         assert prepared.readiness_report.generation_ready is True
         assert prepared.readiness_report.external_api_calls == 0
+        assert all(
+            "1880年代の日本・横浜山手" in item.visual_description
+            for item in prepared.storyboard_frame_drafts
+        )
+        for location in prepared.location_seeds:
+            assert location.continuity_rules[0].startswith(
+                f"Keep {location.source_location_id} layout"
+            )
+            assert all(
+                location.source_location_id in rule
+                or rule.startswith(f"Keep {location.source_location_id}")
+                for rule in location.continuity_rules
+            )
 
         route_plans: dict[str, GenerationPlanEpisode] = {}
         for route in ("h3", "wan", "seedance"):
@@ -161,7 +195,10 @@ def test_real_one_bunch_series_import_preserves_three_episode_contract(
     e02_grape = next(item for item in e02.prop_seeds if item.source_prop_id == "P05")
     e03_grape = next(item for item in e03.prop_seeds if item.source_prop_id == "P05")
     assert "最初の日の一房" in e02_grape.visual_prompt
+    assert "翌日の別の一房" not in e02_grape.visual_prompt
+    assert "C01とC02が同程度の小房" not in e02_grape.visual_prompt
     assert "翌日の別の一房" in e03_grape.visual_prompt
+    assert "C01とC02が同程度の小房" in e03_grape.visual_prompt
     assert e02_grape.visual_prompt != e03_grape.visual_prompt
 
     e03_h3 = GenerationPlanEpisode.model_validate_json(
@@ -186,3 +223,37 @@ def test_cross_contract_rejects_missing_referenced_asset(tmp_path: Path) -> None
 
     with pytest.raises(SeriesPlanError, match="unknown assets"):
         load_series_inputs(series_plan, broken_catalog)
+
+
+def test_late_import_failure_preserves_previous_output(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    series_plan, asset_catalog = _source_paths()
+    output = tmp_path / "series"
+    output.mkdir()
+    marker = output / "previous-approved-output.txt"
+    marker.write_text("keep-me", encoding="utf-8")
+    original = importer_workflow.compile_episode_generation_plan
+
+    def fail_on_e02_wan(*args, **kwargs):
+        episode_id = args[3]
+        route_id = kwargs["route_id"]
+        if episode_id == "E02" and route_id == SUPPORTED_ROUTES["wan"]:
+            raise SeriesPlanError("synthetic late import failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        importer_workflow,
+        "compile_episode_generation_plan",
+        fail_on_e02_wan,
+    )
+    result = importer_workflow.main(
+        [*_cli_args(series_plan, asset_catalog, output), "--overwrite"]
+    )
+
+    assert result == 2
+    assert marker.read_text(encoding="utf-8") == "keep-me"
+    assert sorted(item.name for item in output.iterdir()) == [marker.name]
+    assert not list(tmp_path.glob(".series.staging-*"))
+    assert not list(tmp_path.glob(".series.backup-*"))
