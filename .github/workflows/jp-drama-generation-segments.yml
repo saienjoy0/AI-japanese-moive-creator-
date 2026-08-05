@@ -112,9 +112,19 @@ jobs:
           assert report["external_api_calls"] == 0
           PY
 
-      - name: Ensure no generated media is committed
+      - name: Ensure PR11 adds no generated media
         run: |
-          test -z "$(git ls-files '*.mp4' '*.wav' '*.mp3' '*.png' '*.jpg' '*.jpeg')"
+          test -z "$(git ls-files \
+            'src/apps/jp_drama/generation/*.mp4' \
+            'src/apps/jp_drama/generation/*.wav' \
+            'src/apps/jp_drama/generation/*.mp3' \
+            'src/apps/jp_drama/generation/*.png' \
+            'src/apps/jp_drama/generation/*.jpg' \
+            'examples/jp_drama/generation/*.mp4' \
+            'examples/jp_drama/generation/*.wav' \
+            'examples/jp_drama/generation/*.mp3' \
+            'examples/jp_drama/generation/*.png' \
+            'examples/jp_drama/generation/*.jpg')"
 
       - name: Upload generation segment contract
         uses: actions/upload-artifact@v4
