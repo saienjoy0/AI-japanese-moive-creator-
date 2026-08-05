@@ -99,7 +99,9 @@ jobs:
           assert report["external_api_calls"] == 0
           assert set(report["episodes"]) == {"E01", "E02"}
           for episode in ("E01", "E02"):
-              routes = report["episodes"][episode]["routes"]
+              item = report["episodes"][episode]
+              assert item["prepared_episode_digest"].startswith("sha256:")
+              routes = item["routes"]
               assert set(routes) == {"h3", "wan", "seedance"}
               assert routes["h3"]["segments"] == 1
               assert routes["wan"]["segments"] == 5
@@ -107,6 +109,18 @@ jobs:
               assert routes["h3"]["pending_assets"] == 4
               assert routes["wan"]["pending_assets"] == 9
               assert routes["seedance"]["pending_assets"] == 4
+          assert all(
+              route["execution_route_ready"] is True
+              for route in report["episodes"]["E01"]["routes"].values()
+          )
+          assert all(
+              route["execution_route_ready"] is False
+              for route in report["episodes"]["E02"]["routes"].values()
+          )
+          assert all(
+              "continuation_reference_not_bound" in route["readiness_error_codes"]
+              for route in report["episodes"]["E02"]["routes"].values()
+          )
           e02_h3 = json.loads(
               (root / "E02" / "h3" / "generation_plan_episode.json")
               .read_text(encoding="utf-8")
