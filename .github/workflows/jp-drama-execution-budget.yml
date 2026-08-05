@@ -95,6 +95,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from decimal import Decimal
           from pathlib import Path
 
           budget = json.loads(Path("output/jp_drama/pr18/execution-budget.json").read_text())
@@ -108,7 +109,7 @@ jobs:
           assert components.count("tts") == 3
           assert budget["unknown_components"] == []
           assert budget["payment_approved"] is True
-          assert budget["total_exposure_cny"] > 48
+          assert Decimal(budget["total_exposure_cny"]) > Decimal("48")
           PY
 
       - name: Ensure zero provider calls and no committed media
