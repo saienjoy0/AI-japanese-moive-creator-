@@ -12,12 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..generation.models import GenerationPlanEpisode, GenerationSegment
-from ..rendering.ffmpeg import (
-    black_duration,
-    ffprobe_json,
-    file_sha256,
-    run_command,
-)
+from ..rendering.ffmpeg import black_duration, ffprobe_json, file_sha256, run_command
 from .models import SegmentArtifact, SegmentArtifactManifest
 
 
@@ -55,7 +50,7 @@ class SegmentEvidence(ImportModel):
         if self.kind == "seedance_operator":
             if any(paths):
                 raise ValueError(
-                    "seedance_operator evidence must not masquerade as an automated ledger"
+                    "seedance_operator evidence must not masquerade as automated evidence"
                 )
             if not self.operator_notes or len(self.operator_notes.strip()) < 10:
                 raise ValueError(
@@ -85,6 +80,7 @@ class SegmentImportPreflight(ImportModel):
     provider_route_id: str = Field(min_length=1)
     evidence_kind: EvidenceKind
     evidence_hashes: dict[str, str] = Field(default_factory=dict)
+    evidence_paths: dict[str, str] = Field(default_factory=dict)
     media: SegmentMediaFacts
     required_window_end_seconds: float = Field(gt=0)
     audio_required: bool
@@ -170,7 +166,7 @@ def inspect_segment_import(
 ) -> SegmentImportPreflight:
     segment = _find_segment(plan, segment_id)
     _validate_evidence_route(segment, evidence.kind)
-    evidence_hashes = _validate_evidence_files(
+    evidence_hashes, evidence_paths = _validate_evidence_files(
         plan,
         segment,
         output_path=Path(output_path).resolve(),
@@ -194,7 +190,10 @@ def inspect_segment_import(
             f"source duration {media.duration_seconds:.4f}s is shorter than required "
             f"editorial window end {required_end:.4f}s"
         )
-    maximum_accepted = max(float(segment.requested_duration_seconds) + 5.0, required_end + 2.0)
+    maximum_accepted = max(
+        float(segment.requested_duration_seconds) + 5.0,
+        required_end + 2.0,
+    )
     if media.duration_seconds > maximum_accepted + tolerance:
         errors.append(
             f"source duration {media.duration_seconds:.4f}s exceeds accepted provider "
@@ -206,7 +205,9 @@ def inspect_segment_import(
             f"segment audio strategy {segment.audio_strategy} requires a final audio track"
         )
     if not audio_required and not media.audio_present:
-        warnings.append("silent segment will receive deterministic stereo silence at compose")
+        warnings.append(
+            "silent segment will receive deterministic stereo silence at compose"
+        )
     if media.black_duration_seconds > max_black_seconds:
         errors.append(
             f"black-frame duration {media.black_duration_seconds:.4f}s exceeds "
@@ -218,6 +219,7 @@ def inspect_segment_import(
         provider_route_id=segment.provider_route_id,
         evidence_kind=evidence.kind,
         evidence_hashes=evidence_hashes,
+        evidence_paths=evidence_paths,
         media=media,
         required_window_end_seconds=required_end,
         audio_required=audio_required,
@@ -226,6 +228,27 @@ def inspect_segment_import(
         warnings=warnings,
         external_api_calls=0,
     )
+
+
+def revalidate_segment_import(
+    plan: GenerationPlanEpisode,
+    preflight: SegmentImportPreflight,
+    *,
+    evidence: SegmentEvidence,
+    max_black_seconds: float = 0.25,
+) -> SegmentImportPreflight:
+    current = inspect_segment_import(
+        plan,
+        segment_id=preflight.segment_id,
+        output_path=preflight.media.output_path,
+        evidence=evidence,
+        max_black_seconds=max_black_seconds,
+    )
+    if current.content_digest != preflight.content_digest:
+        raise SegmentImportError(
+            "segment MP4, evidence, or plan changed after preflight"
+        )
+    return current
 
 
 def approve_segment_import(
@@ -270,7 +293,7 @@ def approve_segment_import(
         duration_seconds=preflight.media.duration_seconds,
         audio_present=preflight.media.audio_present,
         approval_digest=approval.content_digest,
-        ledger_path=_evidence_value(preflight, "ledger"),
+        ledger_path=preflight.evidence_paths.get("ledger"),
         imported_by=approver,
         valid=True,
     )
@@ -281,22 +304,22 @@ def build_artifact_manifest(
     plan: GenerationPlanEpisode,
     artifacts: list[SegmentArtifact],
 ) -> SegmentArtifactManifest:
-    manifest = SegmentArtifactManifest.build_with_digest(
-        generation_plan_digest=plan.content_digest,
-        artifacts=artifacts,
-    )
     expected = [item.segment_id for item in plan.segments]
     actual = [item.segment_id for item in artifacts]
     if actual != expected:
         raise SegmentImportError(
-            f"artifact order must exactly match GenerationPlan; expected={expected}, actual={actual}"
+            "artifact order must exactly match GenerationPlan; "
+            f"expected={expected}, actual={actual}"
         )
     for artifact, segment in zip(artifacts, plan.segments):
         if artifact.provider_route_id != segment.provider_route_id:
             raise SegmentImportError(
                 f"artifact {artifact.segment_id} route does not match GenerationPlan"
             )
-    return manifest
+    return SegmentArtifactManifest.build_with_digest(
+        generation_plan_digest=plan.content_digest,
+        artifacts=artifacts,
+    )
 
 
 def _find_segment(plan: GenerationPlanEpisode, segment_id: str) -> GenerationSegment:
@@ -321,7 +344,8 @@ def _validate_evidence_route(segment: GenerationSegment, kind: EvidenceKind) -> 
         )
     if kind != expected:
         raise SegmentImportError(
-            f"segment route {segment.provider_route_id} requires evidence kind {expected}, not {kind}"
+            f"segment route {segment.provider_route_id} requires evidence kind "
+            f"{expected}, not {kind}"
         )
 
 
@@ -331,13 +355,16 @@ def _validate_evidence_files(
     *,
     output_path: Path,
     evidence: SegmentEvidence,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, str]]:
     if evidence.kind == "seedance_operator":
-        return {
-            "operator_notes": _canonical_digest(
-                {"operator_notes": evidence.operator_notes or ""}
-            )
-        }
+        return (
+            {
+                "operator_notes": _canonical_digest(
+                    {"operator_notes": evidence.operator_notes or ""}
+                )
+            },
+            {},
+        )
     paths = {
         "report": Path(evidence.report_path or "").resolve(),
         "ledger": Path(evidence.ledger_path or "").resolve(),
@@ -352,7 +379,9 @@ def _validate_evidence_files(
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise SegmentImportError(f"evidence {name} is not valid JSON: {exc}") from exc
+            raise SegmentImportError(
+                f"evidence {name} is not valid JSON: {exc}"
+            ) from exc
         if not isinstance(payload, dict):
             raise SegmentImportError(f"evidence {name} must be a JSON object")
         payloads[name] = payload
@@ -370,35 +399,81 @@ def _validate_evidence_files(
     report_output = report.get("output") or report.get("output_file")
     if report_output and Path(str(report_output)).resolve() != output_path:
         raise SegmentImportError("provider report output path does not match MP4")
-    stage = str(report.get("stage", ""))
-    status = str(report.get("status", ""))
-    if evidence.kind == "wan_canary":
-        if stage != "render" or status not in {"succeeded", "validated"}:
-            raise SegmentImportError("Wan report is not a successful render report")
-    if evidence.kind == "minimax_h3_canary":
-        if stage not in {"render", "resume"} or status not in {
-            "succeeded",
-            "validated",
-            "downloaded",
-        }:
-            raise SegmentImportError("H3 report is not a successful render/resume report")
 
-    ledger = payloads["ledger"]
-    ledger_segment = ledger.get("segment_id") or ledger.get("shot_id")
-    if ledger_segment and ledger_segment != segment.segment_id:
-        raise SegmentImportError("provider ledger segment identity does not match")
-    if str(ledger.get("status", "")) not in {
-        "succeeded",
-        "validated",
-        "downloaded",
-    }:
-        raise SegmentImportError("provider ledger is not in a reusable success state")
-    approval = payloads["approval_manifest"]
+    if evidence.kind == "wan_canary":
+        _validate_wan_report(report)
+        _validate_wan_ledger(payloads["ledger"], segment)
+    else:
+        _validate_h3_report(report)
+        _validate_h3_ledger(payloads["ledger"], segment, output_path)
+    _validate_request_approval(payloads["approval_manifest"], segment)
+    return hashes, {name: str(path) for name, path in paths.items()}
+
+
+def _validate_wan_report(report: dict) -> None:
+    if report.get("stage") != "render":
+        raise SegmentImportError("Wan report is not a render report")
+    if report.get("status") not in {"succeeded", "validated"}:
+        raise SegmentImportError("Wan report is not a successful render report")
+    if int(report.get("delegate_exit_code", 0)) != 0:
+        raise SegmentImportError("Wan delegated render did not exit successfully")
+
+
+def _validate_h3_report(report: dict) -> None:
+    if report.get("stage") not in {"render", "resume"}:
+        raise SegmentImportError("H3 report is not a render/resume report")
+    if report.get("status") not in {"validated", "downloaded"}:
+        raise SegmentImportError("H3 report is not in a reusable media state")
+    if int(report.get("submission_attempts", 0)) != 1:
+        raise SegmentImportError("H3 report must show exactly one submission attempt")
+
+
+def _validate_wan_ledger(ledger: dict, segment: GenerationSegment) -> None:
+    if ledger.get("shot_id") != segment.segment_id:
+        raise SegmentImportError("Wan ledger shot_id does not match segment")
+    operations = ledger.get("operations")
+    if not isinstance(operations, dict) or not operations:
+        raise SegmentImportError("Wan ledger contains no provider operations")
+    records = list(operations.values())
+    if any(not isinstance(item, dict) for item in records):
+        raise SegmentImportError("Wan ledger operation must be a JSON object")
+    if any(item.get("shot_id") != segment.segment_id for item in records):
+        raise SegmentImportError("Wan ledger operation belongs to another segment")
+    if any(item.get("status") != "succeeded" for item in records):
+        raise SegmentImportError("Wan ledger contains a non-succeeded operation")
+    if not any(item.get("operation_type") == "video" for item in records):
+        raise SegmentImportError("Wan ledger has no succeeded video operation")
+
+
+def _validate_h3_ledger(
+    ledger: dict,
+    segment: GenerationSegment,
+    output_path: Path,
+) -> None:
+    if ledger.get("segment_id") != segment.segment_id:
+        raise SegmentImportError("H3 ledger segment_id does not match")
+    if ledger.get("route_id") != segment.provider_route_id:
+        raise SegmentImportError("H3 ledger route_id does not match")
+    if ledger.get("status") != "validated":
+        raise SegmentImportError("H3 ledger must be in validated state")
+    if int(ledger.get("submission_attempts", 0)) != 1:
+        raise SegmentImportError("H3 ledger must contain exactly one submission attempt")
+    if int(ledger.get("external_api_calls", 0)) != 1:
+        raise SegmentImportError("H3 ledger must contain exactly one external API call")
+    final_path = ledger.get("final_video_path")
+    final_hash = ledger.get("final_video_sha256")
+    if not final_path or Path(str(final_path)).resolve() != output_path:
+        raise SegmentImportError("H3 ledger final video path does not match MP4")
+    if final_hash != file_sha256(output_path):
+        raise SegmentImportError("H3 ledger final video hash does not match MP4")
+
+
+def _validate_request_approval(approval: dict, segment: GenerationSegment) -> None:
     approval_segment = approval.get("segment_id") or approval.get("shot_id")
     if approval_segment != segment.segment_id:
-        raise SegmentImportError("provider approval manifest segment identity does not match")
-    hashes["ledger_path"] = _canonical_digest({"path": str(paths["ledger"])})
-    return hashes
+        raise SegmentImportError(
+            "provider approval manifest segment identity does not match"
+        )
 
 
 def _inspect_media(path: Path) -> SegmentMediaFacts:
@@ -460,11 +535,6 @@ def _count_frames(path: Path) -> int:
     if not value or value == "N/A":
         return 0
     return int(value)
-
-
-def _evidence_value(preflight: SegmentImportPreflight, name: str) -> str | None:
-    value = preflight.evidence_hashes.get(f"{name}_path")
-    return value
 
 
 def _canonical_digest(payload: object) -> str:
