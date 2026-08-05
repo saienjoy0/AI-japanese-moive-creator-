@@ -13,7 +13,12 @@ from .models import (
 )
 
 
-SUPERSEDED_SINGLE_SHOT_ISSUES = frozenset({"route_multi_shot_not_migrated"})
+SUPERSEDED_SINGLE_SHOT_ISSUES = frozenset(
+    {
+        "route_multi_shot_not_migrated",
+        "insufficient_segmentation_evidence",
+    }
+)
 
 
 class CandidateSelectionModel(BaseModel):
@@ -53,22 +58,26 @@ def readiness_issue_blocks_segment(
 ) -> bool:
     """Return whether a plan-level issue still applies after segment hard checks.
 
-    The planner reports that the Wan route cannot execute a multi-shot plan. A
-    segment containing exactly one EditorialShot has already removed that specific
-    capability mismatch, so the global/parent-shot error is superseded for that
-    candidate only. All other readiness errors remain blocking.
+    Segment-scoped issues never leak to sibling segments that share a source shot.
+    A complete single EditorialShot can also be used as a bounded Canary without
+    inventing an internal action boundary; the full-plan error remains preserved in
+    the GenerationPlan artifact and still blocks full-episode execution.
     """
+    if issue.segment_id is not None:
+        applies = issue.segment_id == segment.segment_id
+    else:
+        applies = (
+            issue.source_shot_id is not None
+            and issue.source_shot_id in segment.parent_shot_ids
+        )
+    if not applies:
+        return False
     if (
         issue.code in SUPERSEDED_SINGLE_SHOT_ISSUES
         and len(segment.editorial_shots) == 1
     ):
         return False
-    applies_to_segment = issue.segment_id == segment.segment_id
-    applies_to_source_shot = (
-        issue.source_shot_id is not None
-        and issue.source_shot_id in segment.parent_shot_ids
-    )
-    return applies_to_segment or applies_to_source_shot
+    return True
 
 
 def _segment_rejections(
