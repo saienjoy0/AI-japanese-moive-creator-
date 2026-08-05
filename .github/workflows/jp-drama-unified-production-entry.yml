@@ -7,8 +7,10 @@ on:
       - "src/apps/jp_drama/workflows/run_production_episode.py"
       - "src/apps/jp_drama/workflows/render_episode.py"
       - "tests/test_jp_drama_production_entry.py"
+      - "tests/test_jp_drama_legacy_entry_guard.py"
       - "tests/test_jp_drama_live_providers.py"
       - "docs/pr22-unified-production-entry.md"
+      - "docs/jp-drama-live-providers.md"
       - ".github/workflows/jp-drama-unified-production-entry.yml"
   push:
     branches:
@@ -20,8 +22,10 @@ on:
       - "src/apps/jp_drama/workflows/run_production_episode.py"
       - "src/apps/jp_drama/workflows/render_episode.py"
       - "tests/test_jp_drama_production_entry.py"
+      - "tests/test_jp_drama_legacy_entry_guard.py"
       - "tests/test_jp_drama_live_providers.py"
       - "docs/pr22-unified-production-entry.md"
+      - "docs/jp-drama-live-providers.md"
       - ".github/workflows/jp-drama-unified-production-entry.yml"
   workflow_dispatch:
 
@@ -59,6 +63,7 @@ jobs:
         run: |
           python -m pytest -q \
             tests/test_jp_drama_production_entry.py \
+            tests/test_jp_drama_legacy_entry_guard.py \
             tests/test_jp_drama_live_providers.py
 
       - name: Ensure paid execution is disabled and credentials are absent
