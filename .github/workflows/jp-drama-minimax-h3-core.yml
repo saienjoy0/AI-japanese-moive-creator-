@@ -103,7 +103,7 @@ jobs:
           route_errors = [item for item in report["errors"] if item["scope"] == "route"]
           assert plan["provider_route_id"] == "minimax/h3-reference-av"
           assert report["external_api_calls"] == 0
-          assert route_errors == []
+          assert route_errors == [], json.dumps(route_errors, ensure_ascii=False, indent=2)
           assert report["execution_route_ready"] == report["planning_ready"]
           assert plan["cost_plan"]["unknown_cost_components"] == []
           assert all(
