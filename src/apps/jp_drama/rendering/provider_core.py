@@ -72,6 +72,14 @@ class ReferenceAsset(ProviderCoreModel):
     role: ReferenceRole
     order: int = Field(ge=0)
     subject_id: str | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    fps: float | None = Field(default=None, ge=0)
+    aspect_ratio: float | None = Field(default=None, gt=0)
+    width_px: int | None = Field(default=None, ge=1)
+    height_px: int | None = Field(default=None, ge=1)
+    media_format: str | None = None
+    codec: str | None = None
 
 
 class ProviderCapabilitiesRequired(ProviderCoreModel):
@@ -223,6 +231,7 @@ class PreparedProviderRequest(ProviderCoreModel):
     operation_id: str
     request_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     payload: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProviderSubmission(ProviderCoreModel):
