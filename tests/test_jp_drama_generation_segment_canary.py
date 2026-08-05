@@ -51,6 +51,71 @@ def _plan(prepared: PreparedEpisode, config: LiveProviderConfig):
     )
 
 
+def _preflight_fixture(tmp_path: Path):
+    prepared = _prepared()
+    provider_payload = json.loads(PROVIDERS_PATH.read_text(encoding="utf-8"))
+    provider_payload["dashscope"]["provider_clip_seconds"] = 15
+    providers = tmp_path / "providers.json"
+    providers.write_text(
+        json.dumps(provider_payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    config = LiveProviderConfig.model_validate(provider_payload)
+    plan = _plan(prepared, config)
+    segment = plan.segments[0]
+    prepared_path = tmp_path / "prepared.json"
+    plan_path = tmp_path / "plan.json"
+    prepared_path.write_text(prepared.to_canonical_json() + "\n", encoding="utf-8")
+    plan_path.write_text(plan.to_canonical_json() + "\n", encoding="utf-8")
+    return prepared, plan, segment, providers, prepared_path, plan_path
+
+
+def _run_preflight(
+    *,
+    prepared_path: Path,
+    plan_path: Path,
+    segment_id: str,
+    providers: Path,
+    output_path: Path,
+    report_path: Path,
+    max_cost_cny: str,
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment.pop("DASHSCOPE_API_KEY", None)
+    environment.pop("DASHSCOPE_BASE_URL", None)
+    environment.pop("DASHSCOPE_WORKSPACE_ID", None)
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "src.apps.jp_drama.workflows.render_generation_segment_canary",
+            "--prepared-input",
+            str(prepared_path),
+            "--generation-plan",
+            str(plan_path),
+            "--segment-id",
+            segment_id,
+            "--output",
+            str(output_path),
+            "--providers",
+            str(providers),
+            "--stage",
+            "preflight",
+            "--allow-experimental-multi-shot",
+            "--max-cost-cny",
+            max_cost_cny,
+            "--report",
+            str(report_path),
+            "--print-report",
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_materialized_canary_preserves_segment_prompt_timing_and_identity() -> None:
     prepared = _prepared()
     config = LiveProviderConfig.load(PROVIDERS_PATH)
@@ -126,56 +191,18 @@ def test_contract_never_silently_trims_or_enables_multi_shot() -> None:
 
 
 def test_cli_preflight_uses_real_plan_and_makes_zero_paid_calls(tmp_path: Path) -> None:
-    prepared = _prepared()
-    provider_payload = json.loads(PROVIDERS_PATH.read_text(encoding="utf-8"))
-    provider_payload["dashscope"]["provider_clip_seconds"] = 15
-    providers = tmp_path / "providers.json"
-    providers.write_text(
-        json.dumps(provider_payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    config = LiveProviderConfig.model_validate(provider_payload)
-    plan = _plan(prepared, config)
-    segment = plan.segments[0]
-
-    prepared_path = tmp_path / "prepared.json"
-    plan_path = tmp_path / "plan.json"
+    _, plan, segment, providers, prepared_path, plan_path = _preflight_fixture(tmp_path)
     output_path = tmp_path / "segment.mp4"
     report_path = tmp_path / "report.json"
-    prepared_path.write_text(prepared.to_canonical_json() + "\n", encoding="utf-8")
-    plan_path.write_text(plan.to_canonical_json() + "\n", encoding="utf-8")
 
-    environment = os.environ.copy()
-    environment.pop("DASHSCOPE_API_KEY", None)
-    environment.pop("DASHSCOPE_BASE_URL", None)
-    environment.pop("DASHSCOPE_WORKSPACE_ID", None)
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "src.apps.jp_drama.workflows.render_generation_segment_canary",
-            "--prepared-input",
-            str(prepared_path),
-            "--generation-plan",
-            str(plan_path),
-            "--segment-id",
-            segment.segment_id,
-            "--output",
-            str(output_path),
-            "--providers",
-            str(providers),
-            "--stage",
-            "preflight",
-            "--allow-experimental-multi-shot",
-            "--report",
-            str(report_path),
-            "--print-report",
-        ],
-        cwd=ROOT,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
+    result = _run_preflight(
+        prepared_path=prepared_path,
+        plan_path=plan_path,
+        segment_id=segment.segment_id,
+        providers=providers,
+        output_path=output_path,
+        report_path=report_path,
+        max_cost_cny="6.0",
     )
 
     assert result.returncode == 0, result.stderr
@@ -186,5 +213,32 @@ def test_cli_preflight_uses_real_plan_and_makes_zero_paid_calls(tmp_path: Path) 
     assert report["requested_duration_seconds"] == segment.requested_duration_seconds
     assert report["external_api_calls"] == 0
     assert report["credentials_present"] is False
+    assert report["within_requested_call_limit"] is True
+    assert report["within_requested_cost_limit"] is True
     assert Path(report["materialized_prepared_episode"]).is_file()
+    assert not output_path.exists()
+
+
+def test_cli_budget_gate_blocks_before_any_paid_submission(tmp_path: Path) -> None:
+    _, _, segment, providers, prepared_path, plan_path = _preflight_fixture(tmp_path)
+    output_path = tmp_path / "blocked.mp4"
+    report_path = tmp_path / "blocked-report.json"
+
+    result = _run_preflight(
+        prepared_path=prepared_path,
+        plan_path=plan_path,
+        segment_id=segment.segment_id,
+        providers=providers,
+        output_path=output_path,
+        report_path=report_path,
+        max_cost_cny="5.0",
+    )
+
+    assert result.returncode == 6
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["valid"] is False
+    assert report["budget_gate"] == "blocked_before_provider_submission"
+    assert report["within_requested_cost_limit"] is False
+    assert report["external_api_calls"] == 0
+    assert report["planned_cost_cny"] == "5.059685886"
     assert not output_path.exists()
