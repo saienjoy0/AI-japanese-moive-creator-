@@ -4,6 +4,8 @@ from .bridge import (
     STORYBOARD_BRIDGE_VERSION,
     SUPPORTED_ROUTES,
     SeedanceStoryboardBridgeError,
+)
+from .bridge_contract import (
     build_storyboard_asset_bundle,
     build_storyboard_prepared_episode,
     compile_storyboard_generation_plan,
