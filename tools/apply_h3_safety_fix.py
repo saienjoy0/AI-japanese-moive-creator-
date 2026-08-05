@@ -40,11 +40,12 @@ def main() -> None:
 
     legacy_test = root / "tests/test_jp_drama_minimax_h3_core.py"
     text = legacy_test.read_text(encoding="utf-8")
-    pattern = re.compile(
+
+    approval_pattern = re.compile(
         r"(?m)^(?P<indent>\s*)max_cost_usd=(?P<value>[^\n]+),\n"
         r"(?P=indent)output_path="
     )
-    text, replacements = pattern.subn(
+    text, approval_replacements = approval_pattern.subn(
         lambda match: (
             f"{match.group('indent')}max_cost_usd={match.group('value')},\n"
             f"{match.group('indent')}approval_verified=True,\n"
@@ -52,8 +53,38 @@ def main() -> None:
         ),
         text,
     )
-    if replacements < 1:
-        raise RuntimeError("legacy H3 executor tests were not migrated")
+    if approval_replacements < 1:
+        raise RuntimeError("legacy H3 executor approval tests were not migrated")
+
+    ledger_needle = (
+        '        estimated_cost_usd=Decimal("0.64"),\n'
+        '        max_cost_usd=Decimal("1.00"),\n'
+        '    )\n'
+        '    executor.ledger_store.write(record)'
+    )
+    ledger_replacement = (
+        '        estimated_cost_usd=Decimal("0.64"),\n'
+        '        max_cost_usd=Decimal("1.00"),\n'
+        '        price_snapshot_id="minimax-h3-2026-08-05",\n'
+        '    )\n'
+        '    executor.ledger_store.write(record)'
+    )
+    if ledger_needle not in text:
+        raise RuntimeError("legacy submitting-ledger test shape changed")
+    text = text.replace(ledger_needle, ledger_replacement, 1)
+
+    budget_needle = (
+        '            estimated_cost_usd=Decimal("1.01"),\n'
+        '            max_cost_usd=Decimal("1.00"),'
+    )
+    budget_replacement = (
+        '            estimated_cost_usd=Decimal("0.01"),\n'
+        '            max_cost_usd=Decimal("0.63"),'
+    )
+    if budget_needle not in text:
+        raise RuntimeError("legacy caller-supplied budget test shape changed")
+    text = text.replace(budget_needle, budget_replacement, 1)
+
     legacy_test.write_text(text, encoding="utf-8")
 
     for name in PART_NAMES:
