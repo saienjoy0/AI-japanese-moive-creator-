@@ -128,6 +128,12 @@ def _base_args(tmp_path: Path) -> list[str]:
     ]
 
 
+def _replace_provider_path(args: list[str], path: Path) -> list[str]:
+    updated = list(args)
+    updated[updated.index("--providers") + 1] = str(path)
+    return updated
+
+
 def test_preflight_is_zero_call_and_approval_bound(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     args = _base_args(tmp_path)
@@ -144,6 +150,32 @@ def test_preflight_is_zero_call_and_approval_bound(tmp_path: Path, monkeypatch) 
     assert payload["reference_asset_ids"]
     assert not (tmp_path / "keyframe.png").exists()
     assert not list(tmp_path.glob("*_provider_ledger.json"))
+    assert not list(tmp_path.glob(".*_provider_ledger.json"))
+
+
+def test_first_frame_preflight_ignores_video_clip_duration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    args = _base_args(tmp_path)
+    provider_payload = json.loads(LIVE_CONFIG.read_text(encoding="utf-8"))
+    provider_payload["dashscope"]["provider_clip_seconds"] = 1
+    tiny_video_limit = tmp_path / "tiny-video-limit.json"
+    tiny_video_limit.write_text(
+        json.dumps(provider_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    assert keyframe_main(
+        [*_replace_provider_path(args, tiny_video_limit), "--stage", "preflight"]
+    ) == 0
+
+    payload = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert payload["valid"] is True
+    assert payload["external_api_calls"] == 0
+    assert payload["provider"] == "dashscope"
+    assert not (tmp_path / "keyframe.png").exists()
     assert not list(tmp_path.glob(".*_provider_ledger.json"))
 
 
