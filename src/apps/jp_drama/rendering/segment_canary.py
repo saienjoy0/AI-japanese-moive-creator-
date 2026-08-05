@@ -6,12 +6,21 @@ import hashlib
 import json
 from decimal import Decimal
 
+from ..domain import RenderStrategy
+from ..generation.candidate_selector import readiness_issue_blocks_segment
 from ..generation.models import GenerationPlanEpisode, GenerationSegment
-from ..preparation.models import DialogueDraft, PreparedEpisode
+from ..preparation.models import (
+    DialogueDraft,
+    MappingEntry,
+    MappingTrace,
+    PreparedEpisode,
+    RenderGraph,
+    RenderTaskNode,
+)
 from .canary import select_canary_shot
 
 
-SEGMENT_CANARY_PROTOCOL = "generation-segment-canary-v1"
+SEGMENT_CANARY_PROTOCOL = "generation-segment-canary-v2"
 
 
 class SegmentCanaryError(ValueError):
@@ -40,7 +49,6 @@ def validate_segment_canary_contract(
     segment: GenerationSegment,
     *,
     provider_clip_seconds: int | None = None,
-    allow_experimental_multi_shot: bool = False,
 ) -> None:
     """Fail before any paid submission when the selected segment is not executable."""
     digest = prepared_content_digest(prepared)
@@ -56,10 +64,23 @@ def validate_segment_canary_contract(
         raise SegmentCanaryError(
             "current canary requires exactly one parent source shot per segment"
         )
+    if len(segment.editorial_shots) != 1:
+        raise SegmentCanaryError(
+            "Wan Canary requires exactly one EditorialShot per provider generation"
+        )
     if segment.audio_strategy == "native_av":
         raise SegmentCanaryError(
             "wan/i2v native audio is not migrated; use external_audio_post or silent"
         )
+    if segment.audio_strategy == "silent" and segment.dialogue_slices:
+        raise SegmentCanaryError(
+            "silent Wan segment cannot contain dialogue slices"
+        )
+    if segment.audio_strategy == "external_audio_post" and not segment.dialogue_slices:
+        raise SegmentCanaryError(
+            "external-audio Wan segment must contain at least one dialogue slice"
+        )
+
     provider_frame_count = segment.requested_duration_seconds * segment.timeline_fps
     if (
         segment.used_start_frame < 0
@@ -72,11 +93,6 @@ def validate_segment_canary_contract(
             "segment trim window is invalid for the requested provider clip; refusing "
             "to execute an oversized or truncated editorial interval"
         )
-    if len(segment.editorial_shots) > 1 and not allow_experimental_multi_shot:
-        raise SegmentCanaryError(
-            "segment contains multiple editorial shots; pass "
-            "--allow-experimental-multi-shot only for an explicitly approved Canary"
-        )
     if provider_clip_seconds is not None:
         if provider_clip_seconds <= 0:
             raise SegmentCanaryError("provider_clip_seconds must be greater than zero")
@@ -87,6 +103,132 @@ def validate_segment_canary_contract(
                 "the narrative segment silently"
             )
 
+    for issue in plan.readiness_report.errors:
+        if readiness_issue_blocks_segment(issue, segment):
+            raise SegmentCanaryError(
+                f"selected segment has unresolved readiness error {issue.code}: "
+                f"{issue.message}"
+            )
+
+
+def _rebuild_mapping_trace(
+    selected: PreparedEpisode,
+    *,
+    segment: GenerationSegment,
+    frame_id: str,
+    adapted_beat_id: str,
+) -> MappingTrace:
+    adapted = [
+        item
+        for item in selected.mapping_trace.adapted_beats
+        if item.target_id == adapted_beat_id or item.source_id == adapted_beat_id
+    ]
+    if not adapted:
+        adapted = [
+            MappingEntry(
+                source_id=adapted_beat_id,
+                target_id=adapted_beat_id,
+            )
+        ]
+    return MappingTrace(
+        characters=[
+            MappingEntry(
+                source_id=item.source_character_id,
+                target_id=item.seed_id,
+            )
+            for item in selected.character_seeds
+        ],
+        locations=[
+            MappingEntry(
+                source_id=item.source_location_id,
+                target_id=item.seed_id,
+            )
+            for item in selected.location_seeds
+        ],
+        props=[
+            MappingEntry(
+                source_id=item.source_prop_id,
+                target_id=item.seed_id,
+            )
+            for item in selected.prop_seeds
+        ],
+        shots=[
+            MappingEntry(
+                source_id=segment.segment_id,
+                target_id=frame_id,
+            )
+        ],
+        adapted_beats=adapted,
+        mapping_coverage=1.0,
+    )
+
+
+def _rebuild_render_graph(
+    selected: PreparedEpisode,
+    segment: GenerationSegment,
+) -> tuple[RenderGraph, list[str], RenderStrategy]:
+    """Build the Wan task graph from the segment contract, not its parent strategy."""
+    prefix = f"{selected.episode_id}_{segment.segment_id}"
+
+    def node(
+        task_type: str,
+        depends_on: list[str],
+        *,
+        external: bool,
+        provider: bool,
+    ) -> RenderTaskNode:
+        return RenderTaskNode(
+            task_id=f"{prefix}_{task_type}",
+            shot_id=segment.segment_id,
+            task_type=task_type,
+            depends_on=[f"{prefix}_{item}" for item in depends_on],
+            external_api_required=external,
+            provider_required=provider,
+        )
+
+    if segment.audio_strategy == "silent":
+        tasks = ["generate_video", "finalize_shot"]
+        graph = RenderGraph(
+            nodes=[
+                node("generate_video", [], external=True, provider=True),
+                node(
+                    "finalize_shot",
+                    ["generate_video"],
+                    external=False,
+                    provider=False,
+                ),
+            ]
+        )
+        return graph, tasks, RenderStrategy.SILENT_VIDEO
+
+    tasks = [
+        "generate_video",
+        "generate_tts",
+        "generate_subtitles",
+        "mux_audio_video",
+        "finalize_shot",
+    ]
+    graph = RenderGraph(
+        nodes=[
+            node("generate_video", [], external=True, provider=True),
+            node("generate_tts", [], external=True, provider=True),
+            node("generate_subtitles", [], external=False, provider=False),
+            node(
+                "mux_audio_video",
+                ["generate_video", "generate_tts", "generate_subtitles"],
+                external=False,
+                provider=False,
+            ),
+            node(
+                "finalize_shot",
+                ["mux_audio_video"],
+                external=False,
+                provider=False,
+            ),
+        ]
+    )
+    return graph, tasks, RenderStrategy.VIDEO_PLUS_TTS
+
 
 def materialize_generation_segment_canary(
     prepared: PreparedEpisode,
@@ -94,40 +236,20 @@ def materialize_generation_segment_canary(
     segment_id: str,
     *,
     provider_clip_seconds: int | None = None,
-    allow_experimental_multi_shot: bool = False,
 ) -> PreparedEpisode:
-    """Create a deterministic one-segment PreparedEpisode for the PR8 executor.
-
-    Provider request duration is preserved. Editorial trim handles remain visible in
-    the segment report and are not silently removed by this bridge.
-    """
+    """Create a deterministic one-segment PreparedEpisode for the PR8 executor."""
     segment = find_generation_segment(plan, segment_id)
     validate_segment_canary_contract(
         prepared,
         plan,
         segment,
         provider_clip_seconds=provider_clip_seconds,
-        allow_experimental_multi_shot=allow_experimental_multi_shot,
     )
 
     parent_shot_id = segment.parent_shot_ids[0]
     selected = select_canary_shot(prepared, parent_shot_id)
     frame = selected.storyboard_frame_drafts[0]
     intent = selected.render_intents[0]
-
-    task_types = {node.task_type for node in selected.render_graph.nodes}
-    if segment.audio_strategy == "external_audio_post":
-        if "generate_video" not in task_types:
-            raise SegmentCanaryError(
-                "source render graph has no generate_video task for external-audio segment"
-            )
-        if segment.dialogue_slices and "generate_tts" not in task_types:
-            raise SegmentCanaryError(
-                "source render graph has dialogue but no generate_tts task"
-            )
-    elif segment.audio_strategy == "silent":
-        if not ({"generate_video", "generate_image"} & task_types):
-            raise SegmentCanaryError("source render graph has no visual generation task")
 
     fps = segment.timeline_fps
     handle_offset_seconds = segment.used_start_frame / fps
@@ -144,30 +266,24 @@ def materialize_generation_segment_canary(
         for item in segment.dialogue_slices
     ]
 
-    first_editorial = segment.editorial_shots[0]
+    editorial = segment.editorial_shots[0]
     new_intent_id = f"{intent.intent_id}__{segment.segment_id}"
-    task_id_map = {
-        node.task_id: f"{node.task_id}__{segment.segment_id}"
-        for node in selected.render_graph.nodes
-    }
-    selected.render_graph.nodes = [
-        node.model_copy(
-            update={
-                "task_id": task_id_map[node.task_id],
-                "shot_id": segment.segment_id,
-                "depends_on": [task_id_map[item] for item in node.depends_on],
-            }
-        )
-        for node in selected.render_graph.nodes
-    ]
+    rebuilt_graph, rebuilt_tasks, rebuilt_strategy = _rebuild_render_graph(
+        selected,
+        segment,
+    )
+    selected.render_graph = rebuilt_graph
     selected.render_intents = [
         intent.model_copy(
             update={
                 "intent_id": new_intent_id,
                 "shot_id": segment.segment_id,
+                "resolved_strategy": rebuilt_strategy,
+                "tasks": rebuilt_tasks,
             }
         )
     ]
+
     frame.frame_id = f"frame_{segment.segment_id}"
     frame.source_shot_id = segment.segment_id
     frame.order = 1
@@ -186,8 +302,8 @@ def materialize_generation_segment_canary(
     frame.visual_description = segment.prompt_bundle.visual_prompt
     frame.camera = frame.camera.model_copy(
         update={
-            "shot_size": first_editorial.framing,
-            "movement": first_editorial.camera_movement,
+            "shot_size": editorial.framing,
+            "movement": editorial.camera_movement,
         }
     )
     frame.dialogue_cues = dialogue
@@ -199,18 +315,25 @@ def materialize_generation_segment_canary(
     )
     frame.render_intent_id = new_intent_id
 
+    character_ids = set(segment.character_ids)
+    prop_ids = set(segment.prop_ids)
     selected.character_seeds = [
-        item for item in selected.character_seeds if item.seed_id in set(segment.character_ids)
+        item for item in selected.character_seeds if item.seed_id in character_ids
     ]
     selected.location_seeds = [
         item for item in selected.location_seeds if item.seed_id == segment.location_id
     ]
     selected.prop_seeds = [
-        item for item in selected.prop_seeds if item.seed_id in set(segment.prop_ids)
+        item for item in selected.prop_seeds if item.seed_id in prop_ids
     ]
 
     selected.budget_snapshot.shot_items = [
-        item.model_copy(update={"shot_id": segment.segment_id})
+        item.model_copy(
+            update={
+                "shot_id": segment.segment_id,
+                "strategy": rebuilt_strategy,
+            }
+        )
         for item in selected.budget_snapshot.shot_items
     ]
     subtotal = sum(
@@ -234,7 +357,8 @@ def materialize_generation_segment_canary(
             "segment_id": segment.segment_id,
             "provider_route_id": segment.provider_route_id,
             "requested_duration_seconds": segment.requested_duration_seconds,
-            "allow_experimental_multi_shot": allow_experimental_multi_shot,
+            "audio_strategy": segment.audio_strategy,
+            "tasks": rebuilt_tasks,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -252,22 +376,13 @@ def materialize_generation_segment_canary(
         segment.requested_duration_seconds
     )
     selected.storyboard_frame_drafts = [frame]
+    selected.mapping_trace = _rebuild_mapping_trace(
+        selected,
+        segment=segment,
+        frame_id=frame.frame_id,
+        adapted_beat_id=frame.adapted_beat_id,
+    )
 
-    selected.mapping_trace.shots = [
-        item.model_copy(
-            update={
-                "source_id": (
-                    segment.segment_id
-                    if item.source_id == parent_shot_id
-                    else item.source_id
-                ),
-                "target_id": (
-                    frame.frame_id if item.target_id == parent_shot_id else item.target_id
-                ),
-            }
-        )
-        for item in selected.mapping_trace.shots
-    ]
     selected.readiness_report.episode_id = selected.episode_id
     selected.readiness_report.duration_seconds = float(
         segment.requested_duration_seconds
@@ -276,11 +391,22 @@ def materialize_generation_segment_canary(
     selected.readiness_report.character_count = len(selected.character_seeds)
     selected.readiness_report.location_count = len(selected.location_seeds)
     selected.readiness_report.prop_count = len(selected.prop_seeds)
+    selected.readiness_report.mapping_coverage = 1.0
     selected.readiness_report.resolved_render_intents = 1
     selected.readiness_report.total_render_intents = 1
     selected.readiness_report.estimated_total = (
         selected.budget_snapshot.estimated_total
     )
+    selected.readiness_report.errors = [
+        issue
+        for issue in selected.readiness_report.errors
+        if issue.shot_id in {None, parent_shot_id}
+    ]
+    selected.readiness_report.warnings = [
+        issue
+        for issue in selected.readiness_report.warnings
+        if issue.shot_id in {None, parent_shot_id}
+    ]
     selected.readiness_report.generation_ready = (
         selected.readiness_report.generation_ready
         and selected.budget_snapshot.within_budget
