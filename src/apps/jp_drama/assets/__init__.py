@@ -29,6 +29,11 @@ from .publication import (
     materialize_h3_canary_asset_manifest,
     publish_h3_assets,
 )
+from .wan_first_frame import (
+    WanFirstFrameError,
+    register_wan_first_frame,
+    verify_wan_first_frame_ready,
+)
 from .wan_references import (
     WAN_MASTER_REFERENCE_SCHEMA_VERSION,
     WanMasterReference,
@@ -55,6 +60,7 @@ __all__ = [
     "OSSH3AssetPublisher",
     "PublishedH3Asset",
     "VoiceIdentityProfile",
+    "WanFirstFrameError",
     "WanMasterReference",
     "WanMasterReferenceError",
     "WanMasterReferenceManifest",
@@ -69,6 +75,8 @@ __all__ = [
     "materialize_h3_canary_asset_manifest",
     "prepared_content_digest",
     "publish_h3_assets",
+    "register_wan_first_frame",
+    "verify_wan_first_frame_ready",
     "verify_wan_master_reference_manifest",
     "write_bundle",
     "write_wan_master_reference_manifest",
