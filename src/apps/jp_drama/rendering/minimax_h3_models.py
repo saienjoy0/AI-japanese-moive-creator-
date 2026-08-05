@@ -15,6 +15,7 @@ H3Role = Literal[
     "reference_video",
     "reference_audio",
 ]
+H3Ratio = Literal["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 
 
 class H3Model(BaseModel):
@@ -55,24 +56,35 @@ class H3ContentItem(H3Model):
                 raise ValueError("text content must not be empty")
             if self.role is not None:
                 raise ValueError("text content must not have a role")
-        else:
-            if self.role is None:
-                raise ValueError(f"{self.type} content requires a role")
+            return self
+        if self.type != "image_url" and self.role is None:
+            raise ValueError(f"{self.type} content requires a role")
         allowed = {
-            "image_url": {"first_frame", "last_frame", "reference_image"},
+            "image_url": {None, "first_frame", "last_frame", "reference_image"},
             "video_url": {"reference_video"},
             "audio_url": {"reference_audio"},
         }
-        if self.type != "text" and self.role not in allowed[self.type]:
+        if self.role not in allowed[self.type]:
             raise ValueError(f"role {self.role} is invalid for {self.type}")
         return self
+
+    @property
+    def effective_role(self) -> H3Role | None:
+        if self.type == "image_url" and self.role is None:
+            return "first_frame"
+        return self.role
 
     @classmethod
     def text_item(cls, text: str) -> "H3ContentItem":
         return cls(type="text", text=text)
 
     @classmethod
-    def media_item(cls, media_type: str, url: str, role: H3Role) -> "H3ContentItem":
+    def media_item(
+        cls,
+        media_type: Literal["image_url", "video_url", "audio_url"],
+        url: str,
+        role: H3Role | None,
+    ) -> "H3ContentItem":
         field = {
             "image_url": "image_url",
             "video_url": "video_url",
@@ -86,14 +98,18 @@ class H3VideoGenerationRequest(H3Model):
     content: list[H3ContentItem] = Field(min_length=1)
     resolution: Literal["768P", "2K"]
     duration: int = Field(ge=4, le=15)
-    ratio: Literal["9:16", "adaptive"]
+    ratio: H3Ratio
 
     @model_validator(mode="after")
     def validate_mode(self) -> "H3VideoGenerationRequest":
         text_items = [item for item in self.content if item.type == "text"]
         if len(text_items) != 1:
             raise ValueError("H3 requires exactly one non-empty text content item")
-        roles = [item.role for item in self.content if item.role is not None]
+        roles = [
+            item.effective_role
+            for item in self.content
+            if item.effective_role is not None
+        ]
         frame_roles = {role for role in roles if role in {"first_frame", "last_frame"}}
         reference_roles = {
             role
@@ -102,11 +118,9 @@ class H3VideoGenerationRequest(H3Model):
         }
         if frame_roles and reference_roles:
             raise ValueError("first/last-frame mode cannot be mixed with reference mode")
-        if "last_frame" in frame_roles and "first_frame" not in frame_roles:
-            raise ValueError("last_frame requires first_frame")
-        if len([role for role in roles if role == "first_frame"]) > 1:
+        if sum(role == "first_frame" for role in roles) > 1:
             raise ValueError("only one first_frame is allowed")
-        if len([role for role in roles if role == "last_frame"]) > 1:
+        if sum(role == "last_frame" for role in roles) > 1:
             raise ValueError("only one last_frame is allowed")
         if sum(role == "reference_image" for role in roles) > 9:
             raise ValueError("reference images exceed 9")
@@ -116,13 +130,17 @@ class H3VideoGenerationRequest(H3Model):
             raise ValueError("reference audios exceed 3")
         if frame_roles and self.ratio != "adaptive":
             raise ValueError("first/last-frame mode must use ratio=adaptive")
-        if not frame_roles and self.ratio == "adaptive":
-            raise ValueError("text/reference mode must use an explicit ratio")
+        if not roles and self.ratio == "adaptive":
+            raise ValueError("text-to-video must use an explicit ratio")
         return self
 
     @property
     def mode(self) -> Literal["text", "first_frame", "reference"]:
-        roles = {item.role for item in self.content if item.role is not None}
+        roles = {
+            item.effective_role
+            for item in self.content
+            if item.effective_role is not None
+        }
         if roles & {"first_frame", "last_frame"}:
             return "first_frame"
         if roles:
@@ -136,10 +154,14 @@ class H3ReferenceAsset(H3Model):
     url: str = Field(min_length=1)
     role: H3Role
     priority: int = Field(ge=1)
-    size_bytes: int = Field(ge=0)
+    size_bytes: int | None = Field(default=None, ge=0)
     duration_seconds: float | None = Field(default=None, ge=0)
     fps: float | None = Field(default=None, ge=0)
     aspect_ratio: float | None = Field(default=None, gt=0)
+    width_px: int | None = Field(default=None, ge=1)
+    height_px: int | None = Field(default=None, ge=1)
+    media_format: str | None = None
+    codec: str | None = None
     sha256: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
 
     @model_validator(mode="after")
@@ -153,8 +175,6 @@ class H3ReferenceAsset(H3Model):
         }[self.role]
         if self.kind != expected_kind:
             raise ValueError(f"{self.role} requires kind={expected_kind}")
-        if self.kind in {"video", "audio"} and self.duration_seconds is None:
-            raise ValueError(f"{self.kind} reference requires duration_seconds")
         return self
 
 
@@ -162,14 +182,25 @@ class H3ReferenceBundle(H3Model):
     segment_id: str = Field(min_length=1)
     assets: list[H3ReferenceAsset] = Field(default_factory=list)
 
+    @property
+    def reference_video_seconds(self) -> float:
+        return sum(
+            item.duration_seconds or 0
+            for item in self.assets
+            if item.role == "reference_video"
+        )
+
     def preflight_errors(self, *, max_request_bytes: int = 64 * 1024 * 1024) -> list[str]:
         errors: list[str] = []
-        if sum(item.size_bytes for item in self.assets) > max_request_bytes:
+        known_sizes = [item.size_bytes for item in self.assets if item.size_bytes is not None]
+        if len(known_sizes) != len(self.assets):
+            errors.append("reference asset size metadata is incomplete")
+        if sum(known_sizes) > max_request_bytes:
             errors.append("request exceeds 64MB")
-        images = [item for item in self.assets if item.role == "reference_image"]
+        reference_images = [item for item in self.assets if item.role == "reference_image"]
         videos = [item for item in self.assets if item.role == "reference_video"]
         audios = [item for item in self.assets if item.role == "reference_audio"]
-        if len(images) > 9:
+        if len(reference_images) > 9:
             errors.append("reference images exceed 9")
         if len(videos) > 3:
             errors.append("reference videos exceed 3")
@@ -179,22 +210,73 @@ class H3ReferenceBundle(H3Model):
             errors.append("reference video duration exceeds 15 seconds")
         if sum(item.duration_seconds or 0 for item in audios) > 15:
             errors.append("reference audio duration exceeds 15 seconds")
+
         for item in self.assets:
-            if item.aspect_ratio is not None and not 0.4 <= item.aspect_ratio <= 2.5:
-                errors.append(f"{item.asset_id} aspect ratio is outside 0.4-2.5")
+            if item.url.startswith("pending://"):
+                errors.append(f"{item.asset_id} still uses pending://")
+            if item.sha256 is None:
+                errors.append(f"{item.asset_id} is missing sha256")
+            if item.size_bytes is not None:
+                maximum = {
+                    "image": 30 * 1024 * 1024,
+                    "video": 50 * 1024 * 1024,
+                    "audio": 15 * 1024 * 1024,
+                }[item.kind]
+                if item.size_bytes > maximum:
+                    errors.append(f"{item.asset_id} exceeds the {item.kind} file-size limit")
+            if item.kind in {"image", "video"}:
+                if item.width_px is None or item.height_px is None:
+                    errors.append(f"{item.asset_id} is missing dimensions")
+                elif not (
+                    256 <= item.width_px <= 5760
+                    and 256 <= item.height_px <= 5760
+                ):
+                    errors.append(f"{item.asset_id} dimensions are outside 256-5760")
+                if item.aspect_ratio is None:
+                    errors.append(f"{item.asset_id} is missing aspect_ratio")
+                elif not 0.4 <= item.aspect_ratio <= 2.5:
+                    errors.append(f"{item.asset_id} aspect ratio is outside 0.4-2.5")
+            if item.kind == "image":
+                if (item.media_format or "").lower() not in {
+                    "jpg",
+                    "jpeg",
+                    "png",
+                    "webp",
+                    "heic",
+                    "heif",
+                }:
+                    errors.append(f"{item.asset_id} image format is unsupported")
             if item.kind == "video":
-                if not 2 <= (item.duration_seconds or 0) <= 15:
+                if item.duration_seconds is None:
+                    errors.append(f"{item.asset_id} is missing video duration")
+                elif not 2 <= item.duration_seconds <= 15:
                     errors.append(f"{item.asset_id} video duration is outside 2-15 seconds")
                 if item.fps is None or not 23.976 <= item.fps <= 60:
                     errors.append(f"{item.asset_id} FPS is outside 23.976-60")
-            if item.kind == "audio" and not 2 <= (item.duration_seconds or 0) <= 15:
-                errors.append(f"{item.asset_id} audio duration is outside 2-15 seconds")
+                if (item.media_format or "").lower() not in {"mp4", "mov"}:
+                    errors.append(f"{item.asset_id} video format is unsupported")
+                if item.codec and item.codec.lower() not in {
+                    "h264",
+                    "h.264",
+                    "avc",
+                    "h265",
+                    "h.265",
+                    "hevc",
+                }:
+                    errors.append(f"{item.asset_id} video codec is unsupported")
+            if item.kind == "audio":
+                if item.duration_seconds is None:
+                    errors.append(f"{item.asset_id} is missing audio duration")
+                elif not 2 <= item.duration_seconds <= 15:
+                    errors.append(f"{item.asset_id} audio duration is outside 2-15 seconds")
+                if (item.media_format or "").lower() not in {"wav", "mp3"}:
+                    errors.append(f"{item.asset_id} audio format is unsupported")
         return errors
 
     def require_valid(self, *, max_request_bytes: int = 64 * 1024 * 1024) -> None:
         errors = self.preflight_errors(max_request_bytes=max_request_bytes)
         if errors:
-            raise ValueError("; ".join(errors))
+            raise ValueError("; ".join(dict.fromkeys(errors)))
 
 
 class H3SubmitResult(H3Model):
