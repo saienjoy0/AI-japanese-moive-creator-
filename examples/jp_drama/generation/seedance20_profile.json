@@ -1,0 +1,15 @@
+{
+  "profile_id": "seedance20-adaptive-v1",
+  "route_id": "seedance/platform",
+  "policy": {
+    "policy_id": "seedance20-safe-v1",
+    "low": {"minimum_seconds": 8, "target_seconds": 10, "maximum_seconds": 12},
+    "medium": {"minimum_seconds": 7, "target_seconds": 10, "maximum_seconds": 12},
+    "high": {"minimum_seconds": 4, "target_seconds": 6, "maximum_seconds": 7},
+    "very_high": {"minimum_seconds": 4, "target_seconds": 4, "maximum_seconds": 5},
+    "max_internal_editorial_shots": 3,
+    "allow_low_complexity_15_seconds": true,
+    "max_characters_for_15_seconds": 2,
+    "strict_lip_sync_shortens_segment": true
+  }
+}
