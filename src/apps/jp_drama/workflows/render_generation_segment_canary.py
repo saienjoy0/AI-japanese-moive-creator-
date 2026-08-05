@@ -257,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     within_call_limit = 0 <= args.max_api_calls and planned_api_calls <= args.max_api_calls
     within_cost_limit = Decimal("0") <= args.max_cost_cny and planned_cost_cny <= args.max_cost_cny
     missing_environment = config.dashscope.missing_environment()
-    credentials_present = not missing_environment
+    credentials_present = bool(os.getenv(config.dashscope.api_key_env))
 
     common_metadata = _segment_metadata(
         segment=segment,
