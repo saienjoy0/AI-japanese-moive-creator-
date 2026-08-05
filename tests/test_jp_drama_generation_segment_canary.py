@@ -275,6 +275,9 @@ def test_cli_auto_preflight_makes_zero_paid_calls(tmp_path: Path) -> None:
     assert report["execution_budget"]["unknown_components"] == []
     assert report["external_api_calls"] == 0
     assert report["credentials_present"] is False
+    assert report["asset_bundle_present"] is False
+    assert report["asset_readiness"]["ready"] is True
+    assert report["asset_readiness"]["warnings"]
     assert report["within_requested_call_limit"] is True
     assert report["within_requested_cost_limit"] is True
     assert report["candidate_selection"]["selected_segment_id"] == segment.segment_id
@@ -311,7 +314,7 @@ def test_budget_gate_reports_real_credential_presence_without_calling_provider(
     assert not output_path.exists()
 
 
-def test_delegate_failure_still_writes_enriched_report(tmp_path: Path) -> None:
+def test_paid_stage_without_asset_bundle_is_blocked_before_delegate(tmp_path: Path) -> None:
     _, plan, segment, providers, prepared_path, plan_path = _preflight_fixture(tmp_path)
     output_path = tmp_path / "failed.mp4"
     report_path = tmp_path / "failed-report.json"
@@ -328,10 +331,12 @@ def test_delegate_failure_still_writes_enriched_report(tmp_path: Path) -> None:
 
     assert result.returncode == 6
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["status"] == "failed"
+    assert report["status"] == "blocked"
+    assert report["asset_gate"] == "blocked_before_provider_submission"
+    assert report["asset_bundle_present"] is False
+    assert report["asset_readiness"]["ready"] is False
     assert report["segment_id"] == segment.segment_id
     assert report["generation_plan_digest"] == plan.content_digest
-    assert report["delegate_exit_code"] == 6
     assert report["credentials_present"] is False
-    assert report["errors"]
+    assert report["external_api_calls"] == 0
     assert not output_path.exists()

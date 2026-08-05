@@ -1,4 +1,4 @@
-"""Run one safe PR11 GenerationSegment through the PR8 Wan canary."""
+"""Run one safe GenerationSegment through the approval-gated Wan canary."""
 
 from __future__ import annotations
 
@@ -13,10 +13,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ..generation import (
-    CandidateSelectionError,
-    select_safe_canary_candidate,
+from ..assets import (
+    AssetBundleError,
+    assess_asset_readiness,
+    load_bundle,
 )
+from ..generation import CandidateSelectionError, select_safe_canary_candidate
 from ..generation.models import GenerationPlanEpisode
 from ..preparation.models import PreparedEpisode
 from ..rendering.canary_tasks import Wan27LiveTaskExecutor
@@ -45,8 +47,9 @@ def _decimal(value: str) -> Decimal:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Select or materialize one safe single-shot GenerationSegment and delegate "
-            "execution to the restart-safe, approval-gated Wan 2.7 canary."
+            "Select one safe single-shot GenerationSegment and delegate execution "
+            "to the restart-safe Wan 2.7 canary. Paid stages require an approved "
+            "reference-asset and voice bundle."
         )
     )
     parser.add_argument("--prepared-input", required=True, help="PreparedEpisode JSON")
@@ -58,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", required=True, help="Final one-segment Canary MP4")
     parser.add_argument("--providers", required=True, help="Live provider configuration JSON")
+    parser.add_argument("--asset-bundle", help="ApprovedAssetBundle JSON")
     parser.add_argument(
         "--stage",
         choices=("preflight", "keyframe", "approve", "render"),
@@ -100,6 +104,10 @@ def _materialized_path(output: Path, segment_id: str) -> Path:
 
 def _delegate_report_path(output: Path, segment_id: str) -> Path:
     return output.parent / f".{output.stem}_{segment_id}_delegate_report.json"
+
+
+def _derived_provider_path(output: Path, segment_id: str) -> Path:
+    return output.parent / f".{output.stem}_{segment_id}_providers.json"
 
 
 def _append_optional(arguments: list[str], flag: str, value: str | None) -> None:
@@ -199,6 +207,79 @@ def _load_delegate_report(path: Path) -> dict[str, object] | None:
         return None
 
 
+def _missing_bundle_readiness(stage: str, plan_digest: str, segment_id: str) -> dict:
+    mandatory = stage != "preflight"
+    issue = {
+        "code": "approved_asset_bundle_missing",
+        "severity": "error" if mandatory else "warning",
+        "message": (
+            "paid provider stages require --asset-bundle"
+            if mandatory
+            else "no asset bundle supplied; preflight cannot verify production assets"
+        ),
+        "segment_id": segment_id,
+    }
+    return {
+        "stage": stage,
+        "generation_plan_digest": plan_digest,
+        "bundle_digest": None,
+        "selected_segment_ids": [segment_id],
+        "required_asset_ids": [],
+        "required_voice_character_ids": [],
+        "ready": not mandatory,
+        "errors": [issue] if mandatory else [],
+        "warnings": [] if mandatory else [issue],
+    }
+
+
+def _asset_gate(
+    *,
+    bundle_path: str | None,
+    prepared: PreparedEpisode,
+    plan: GenerationPlanEpisode,
+    segment_id: str,
+    stage: str,
+):
+    if not bundle_path:
+        return None, _missing_bundle_readiness(stage, plan.content_digest, segment_id)
+    bundle = load_bundle(bundle_path)
+    readiness = assess_asset_readiness(
+        bundle,
+        prepared,
+        plan,
+        stage=stage,
+        segment_ids=[segment_id],
+    )
+    return bundle, readiness.model_dump(mode="json")
+
+
+def _approved_first_frame(bundle, segment_id: str):
+    matches = [
+        item
+        for item in bundle.assets
+        if item.role == "first_frame"
+        and item.approval_status == "approved"
+        and segment_id in item.required_for_segment_ids
+    ]
+    if len(matches) != 1:
+        raise AssetBundleError(
+            f"render requires exactly one approved first frame for {segment_id}"
+        )
+    return matches[0]
+
+
+def _config_with_approved_voices(config: LiveProviderConfig, bundle) -> LiveProviderConfig:
+    approved = {
+        item.character_seed_id: item.voice_id
+        for item in bundle.voice_profiles
+        if item.approval_status == "approved" and item.voice_id
+    }
+    provider = config.dashscope.model_copy(
+        update={"voice_by_character": approved}
+    )
+    return config.model_copy(update={"dashscope": provider})
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     prepared_path = Path(args.prepared_input)
@@ -220,12 +301,20 @@ def main(argv: list[str] | None = None) -> int:
             segment.segment_id,
             provider_clip_seconds=config.dashscope.provider_clip_seconds,
         )
+        bundle, asset_readiness = _asset_gate(
+            bundle_path=args.asset_bundle,
+            prepared=prepared,
+            plan=plan,
+            segment_id=segment.segment_id,
+            stage=args.stage,
+        )
     except (
         OSError,
         ValidationError,
         json.JSONDecodeError,
         SegmentCanaryError,
         CandidateSelectionError,
+        AssetBundleError,
     ) as exc:
         print(f"input error: {exc}", file=sys.stderr)
         return EXIT_INPUT
@@ -239,6 +328,78 @@ def main(argv: list[str] | None = None) -> int:
         else _materialized_path(output_path, segment.segment_id)
     ).resolve()
     _atomic_write(materialized_path, materialized.to_canonical_json() + "\n")
+
+    common_metadata = _segment_metadata(
+        segment=segment,
+        plan=plan,
+        materialized=materialized,
+        materialized_path=materialized_path,
+        decision=decision,
+    )
+    asset_metadata = {
+        "asset_bundle_present": bundle is not None,
+        "asset_readiness": asset_readiness,
+    }
+    missing_environment = config.dashscope.missing_environment()
+    credentials_present = bool(os.getenv(config.dashscope.api_key_env))
+
+    if not asset_readiness["ready"]:
+        failure = {
+            "valid": False,
+            "status": "blocked",
+            "stage": args.stage,
+            "credentials_present": credentials_present,
+            "missing_environment": missing_environment,
+            "external_api_calls": 0,
+            "committed_api_calls": 0,
+            "committed_cost_cny": "0",
+            "asset_gate": "blocked_before_provider_submission",
+            "errors": [item["message"] for item in asset_readiness["errors"]],
+            **common_metadata,
+            **asset_metadata,
+        }
+        _write_enriched_report(
+            failure,
+            report_path=args.report,
+            print_report=args.print_report,
+        )
+        print(
+            "provider error: approved asset gate blocked all provider submissions",
+            file=sys.stderr,
+        )
+        return EXIT_PROVIDER
+
+    delegated_provider_path = Path(args.providers).resolve()
+    approved_keyframe = args.approved_keyframe
+    approval_manifest = args.approval_manifest
+    if args.stage == "render":
+        if bundle is None:
+            raise AssertionError("render readiness cannot pass without an asset bundle")
+        first_frame = _approved_first_frame(bundle, segment.segment_id)
+        if approved_keyframe and Path(approved_keyframe).resolve() != Path(
+            first_frame.asset_path
+        ).resolve():
+            print(
+                "provider error: explicit approved keyframe differs from asset bundle",
+                file=sys.stderr,
+            )
+            return EXIT_PROVIDER
+        if approval_manifest and Path(approval_manifest).resolve() != Path(
+            first_frame.approval_manifest_path
+        ).resolve():
+            print(
+                "provider error: explicit approval manifest differs from asset bundle",
+                file=sys.stderr,
+            )
+            return EXIT_PROVIDER
+        approved_keyframe = first_frame.asset_path
+        approval_manifest = first_frame.approval_manifest_path
+        config = _config_with_approved_voices(config, bundle)
+        delegated_provider_path = _derived_provider_path(
+            output_path,
+            segment.segment_id,
+        ).resolve()
+        _atomic_write(delegated_provider_path, config.to_canonical_json())
 
     approved_shots = {segment.segment_id}
     planned_keyframe_calls = 1
@@ -256,16 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     planned_cost_cny = planned_keyframe_cost + planned_render_cost
     within_call_limit = 0 <= args.max_api_calls and planned_api_calls <= args.max_api_calls
     within_cost_limit = Decimal("0") <= args.max_cost_cny and planned_cost_cny <= args.max_cost_cny
-    missing_environment = config.dashscope.missing_environment()
-    credentials_present = bool(os.getenv(config.dashscope.api_key_env))
 
-    common_metadata = _segment_metadata(
-        segment=segment,
-        plan=plan,
-        materialized=materialized,
-        materialized_path=materialized_path,
-        decision=decision,
-    )
     budget_metadata: dict[str, object] = {
         "execution_budget": {
             "currency": "CNY",
@@ -318,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
                 if condition
             ],
             **common_metadata,
+            **asset_metadata,
             **budget_metadata,
         }
         _write_enriched_report(
@@ -339,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         str(output_path),
         "--providers",
-        str(args.providers),
+        str(delegated_provider_path),
         "--shot-id",
         segment.segment_id,
         "--stage",
@@ -352,8 +505,8 @@ def main(argv: list[str] | None = None) -> int:
         str(delegate_report),
         "--print-report",
     ]
-    _append_optional(delegated, "--approved-keyframe", args.approved_keyframe)
-    _append_optional(delegated, "--approval-manifest", args.approval_manifest)
+    _append_optional(delegated, "--approved-keyframe", approved_keyframe)
+    _append_optional(delegated, "--approval-manifest", approval_manifest)
     _append_optional(delegated, "--keyframe-output", args.keyframe_output)
     _append_optional(delegated, "--ledger-file", args.ledger_file)
     _append_optional(delegated, "--work-dir", args.work_dir)
@@ -375,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
         "external_api_calls": 0,
     }
     payload.update(common_metadata)
+    payload.update(asset_metadata)
     payload.update(budget_metadata)
     payload["credentials_present"] = credentials_present
     payload["missing_environment"] = missing_environment
@@ -395,7 +549,9 @@ def main(argv: list[str] | None = None) -> int:
         payload["errors"] = errors
     else:
         payload["status"] = (
-            "succeeded" if args.stage in {"preflight", "approve", "render"} else "awaiting_operator"
+            "succeeded"
+            if args.stage in {"preflight", "approve", "render"}
+            else "awaiting_operator"
         )
 
     _write_enriched_report(
@@ -417,8 +573,8 @@ def main(argv: list[str] | None = None) -> int:
             f"Route: {segment.provider_route_id}\n"
             f"Provider request: {segment.requested_duration_seconds}s\n"
             f"Editorial duration: {segment.editorial_duration_seconds}s\n"
+            f"Assets ready: {asset_readiness['ready']}\n"
             f"Planned budget: {planned_api_calls} calls / {planned_cost_cny} CNY\n"
-            f"Materialized input: {materialized_path}\n"
             f"External API calls this stage: {payload.get('external_api_calls', 0)}\n"
             "Status: OK"
         )
