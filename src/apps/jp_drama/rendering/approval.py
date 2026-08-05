@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .ffmpeg import file_sha256
 
@@ -41,6 +41,41 @@ class ApprovedKeyframeManifest(BaseModel):
     operation_id: str = Field(min_length=1)
     approved: Literal[True] = True
     approved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    master_reference_manifest_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    master_reference_asset_ids: list[str] = Field(default_factory=list)
+    master_reference_asset_hashes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_master_lineage(self) -> "ApprovedKeyframeManifest":
+        has_digest = self.master_reference_manifest_digest is not None
+        has_ids = bool(self.master_reference_asset_ids)
+        has_hashes = bool(self.master_reference_asset_hashes)
+        if has_digest:
+            if not has_ids or not has_hashes:
+                raise ValueError(
+                    "master-reference approval requires asset IDs and hashes"
+                )
+            if len(self.master_reference_asset_ids) != len(
+                self.master_reference_asset_hashes
+            ):
+                raise ValueError(
+                    "master-reference asset IDs and hashes must have equal length"
+                )
+            if len(self.master_reference_asset_ids) != len(
+                set(self.master_reference_asset_ids)
+            ):
+                raise ValueError("master-reference asset IDs must be unique")
+            for digest in self.master_reference_asset_hashes:
+                if not digest.startswith("sha256:") or len(digest) != 71:
+                    raise ValueError("master-reference asset hash is invalid")
+        elif has_ids or has_hashes:
+            raise ValueError(
+                "master-reference asset lineage requires manifest digest"
+            )
+        return self
 
     def to_canonical_json(self) -> str:
         return json.dumps(
@@ -88,6 +123,9 @@ def create_approval_manifest(
     generated_by: str,
     operation_id: str,
     output_path: str | Path,
+    master_reference_manifest_digest: str | None = None,
+    master_reference_asset_ids: list[str] | None = None,
+    master_reference_asset_hashes: list[str] | None = None,
 ) -> ApprovedKeyframeManifest:
     asset = Path(asset_path).resolve()
     if not asset.is_file() or asset.stat().st_size == 0:
@@ -102,6 +140,9 @@ def create_approval_manifest(
         height=height,
         generated_by=generated_by,
         operation_id=operation_id,
+        master_reference_manifest_digest=master_reference_manifest_digest,
+        master_reference_asset_ids=list(master_reference_asset_ids or []),
+        master_reference_asset_hashes=list(master_reference_asset_hashes or []),
     )
     destination = Path(output_path).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -127,6 +168,9 @@ def load_and_verify_approval(
     *,
     expected_shot_id: str,
     expected_generated_by: str | None = None,
+    expected_master_reference_manifest_digest: str | None = None,
+    expected_master_reference_asset_ids: list[str] | None = None,
+    expected_master_reference_asset_hashes: list[str] | None = None,
 ) -> tuple[ApprovedKeyframeManifest, Path]:
     manifest_path = Path(path).resolve()
     try:
@@ -144,6 +188,24 @@ def load_and_verify_approval(
         raise ApprovalError(
             f"approval provider mismatch: {manifest.generated_by} != {expected_generated_by}"
         )
+    if (
+        expected_master_reference_manifest_digest is not None
+        and manifest.master_reference_manifest_digest
+        != expected_master_reference_manifest_digest
+    ):
+        raise ApprovalError(
+            "approval master-reference manifest digest does not match"
+        )
+    if expected_master_reference_asset_ids is not None:
+        if manifest.master_reference_asset_ids != list(
+            expected_master_reference_asset_ids
+        ):
+            raise ApprovalError("approval master-reference asset IDs do not match")
+    if expected_master_reference_asset_hashes is not None:
+        if manifest.master_reference_asset_hashes != list(
+            expected_master_reference_asset_hashes
+        ):
+            raise ApprovalError("approval master-reference asset hashes do not match")
 
     asset = Path(manifest.asset_path).resolve()
     if not asset.is_file() or asset.stat().st_size == 0:
