@@ -1,0 +1,19 @@
+{
+  "C01": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C01_boku.png",
+  "C02": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C02_jim.png",
+  "C03": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C03_teacher.png",
+  "C90": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C90_background_classmates.png",
+  "C91": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/characters/C91_reporting_classmate.png",
+  "P01": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P01_imported_wooden_12_color_paint_box.png",
+  "P02": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P02_indigo_and_magenta_solid_paints.png",
+  "P03": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P03_unfinished_harbor_watercolor.png",
+  "P04": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P04_cheap_worn_watercolor_set.png",
+  "P05": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P05_one_bunch_of_grapes.png",
+  "P06": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P06_small_silver_scissors.png",
+  "P07": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/props/P07_brown_leather_school_satchel.png",
+  "S01": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S01_classroom.png",
+  "S02": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S02_school_corridor.png",
+  "S03": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S03_teacher_room.png",
+  "S04": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S04_school_gate.png",
+  "S05": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/scenes/S05_yokohama_harbor_memory.png"
+}
