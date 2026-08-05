@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-H3_EXECUTION_LEDGER_SCHEMA_VERSION = "1.0.0"
+H3_EXECUTION_LEDGER_SCHEMA_VERSION = "1.1.0"
 H3ExecutionStatus = Literal[
     "planned",
     "assets_preparing",
@@ -67,6 +67,7 @@ class H3ExecutionRecord(H3LedgerModel):
     final_video_path: str | None = None
     final_video_sha256: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     estimated_cost_usd: Decimal = Field(ge=0)
+    max_cost_usd: Decimal = Field(ge=0)
     actual_usage: dict | None = None
     external_api_calls: int = Field(default=0, ge=0, le=1)
     error: str | None = None
@@ -75,6 +76,11 @@ class H3ExecutionRecord(H3LedgerModel):
 
     @model_validator(mode="after")
     def validate_state(self) -> "H3ExecutionRecord":
+        if self.estimated_cost_usd > self.max_cost_usd:
+            raise ValueError(
+                f"estimated H3 cost {self.estimated_cost_usd} USD exceeds "
+                f"max_cost_usd {self.max_cost_usd} USD"
+            )
         if self.task_id and self.external_api_calls != 1:
             raise ValueError("task_id requires exactly one external API submission")
         if self.status in {"submitted", "queued", "running", "succeeded", "downloading"}:
@@ -110,6 +116,7 @@ class H3ExecutionLedgerStore:
             "resolution",
             "duration",
             "ratio",
+            "max_cost_usd",
         ):
             if getattr(existing, field) != getattr(record, field):
                 conflicts.append(field)
