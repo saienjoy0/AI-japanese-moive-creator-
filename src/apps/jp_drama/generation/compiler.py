@@ -511,6 +511,10 @@ def _build_segment(
         frame.character_seed_ids,
         frame.location_seed_id,
         frame.prop_seed_ids,
+        requires_first_frame=(
+            capabilities.image_to_video and not capabilities.text_to_video
+        )
+        or profile.route_id == "wan/i2v",
     )
     source_intent = next(
         item for item in prepared.render_intents if item.shot_id == frame.source_shot_id
@@ -1039,6 +1043,8 @@ def _reference_ids(
     characters: list[str],
     location: str,
     props: list[str],
+    *,
+    requires_first_frame: bool,
 ) -> list[str]:
     values = [
         f"ref_char_{_subject_token(item)}_{_short_hash(group_id, item)}"
@@ -1049,7 +1055,8 @@ def _reference_ids(
         f"ref_prop_{_subject_token(item)}_{_short_hash(group_id, item)}"
         for item in props
     )
-    values.append(f"ref_first_{_short_hash(segment_id, 'first_frame')}")
+    if requires_first_frame:
+        values.append(f"ref_first_{_short_hash(segment_id, 'first_frame')}")
     return values
 
 
