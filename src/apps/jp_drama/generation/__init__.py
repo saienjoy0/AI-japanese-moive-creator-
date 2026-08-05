@@ -1,5 +1,12 @@
 """Adaptive generation segmentation for Japanese short dramas."""
 
+from .candidate_selector import (
+    CandidateSelectionDecision,
+    CandidateSelectionError,
+    RejectedCandidate,
+    require_safe_canary_candidate,
+    select_safe_canary_candidate,
+)
 from .compiler import (
     GenerationCompilationError,
     compile_generation_plan,
@@ -26,6 +33,8 @@ from .serialization import render_generation_summary, write_generation_artifacts
 __all__ = [
     "GENERATION_COMPILER_VERSION",
     "GENERATION_PLAN_SCHEMA_VERSION",
+    "CandidateSelectionDecision",
+    "CandidateSelectionError",
     "ContinuityContract",
     "DialogueSlice",
     "DurationBand",
@@ -39,10 +48,13 @@ __all__ = [
     "PromptBundle",
     "ProviderSegmentationProfile",
     "ReferenceAssetRequirement",
+    "RejectedCandidate",
     "SegmentComplexity",
     "SegmentationPolicy",
     "compile_generation_plan",
     "render_generation_summary",
+    "require_safe_canary_candidate",
     "segment_to_generation_spec",
+    "select_safe_canary_candidate",
     "write_generation_artifacts",
 ]
