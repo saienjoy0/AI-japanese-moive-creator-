@@ -7,7 +7,10 @@ on:
       - "src/apps/jp_drama/workflows/prepare_asset_bundle.py"
       - "src/apps/jp_drama/workflows/approve_asset_bundle.py"
       - "src/apps/jp_drama/workflows/validate_asset_bundle.py"
+      - "src/apps/jp_drama/workflows/render_generation_segment_canary.py"
       - "tests/test_jp_drama_approved_assets.py"
+      - "tests/test_jp_drama_asset_gated_canary.py"
+      - "tests/test_jp_drama_generation_segment_canary.py"
       - "docs/pr17-approved-assets-voices.md"
       - ".github/workflows/jp-drama-approved-assets.yml"
   push:
@@ -20,7 +23,10 @@ on:
       - "src/apps/jp_drama/workflows/prepare_asset_bundle.py"
       - "src/apps/jp_drama/workflows/approve_asset_bundle.py"
       - "src/apps/jp_drama/workflows/validate_asset_bundle.py"
+      - "src/apps/jp_drama/workflows/render_generation_segment_canary.py"
       - "tests/test_jp_drama_approved_assets.py"
+      - "tests/test_jp_drama_asset_gated_canary.py"
+      - "tests/test_jp_drama_generation_segment_canary.py"
       - "docs/pr17-approved-assets-voices.md"
       - ".github/workflows/jp-drama-approved-assets.yml"
   workflow_dispatch:
@@ -30,7 +36,7 @@ permissions:
 
 jobs:
   approved-assets:
-    name: Validate hash-bound masters frames and voices
+    name: Validate hash-bound masters frames voices and Canary gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,10 +57,11 @@ jobs:
       - name: Compile Japanese drama packages
         run: python -m compileall -q src/apps/jp_drama
 
-      - name: Run approved asset tests
+      - name: Run approved asset and Canary gate tests
         run: |
           python -m pytest -q \
             tests/test_jp_drama_approved_assets.py \
+            tests/test_jp_drama_asset_gated_canary.py \
             tests/test_jp_drama_action_beat_generation.py \
             tests/test_jp_drama_generation_segment_canary.py
 
@@ -201,8 +208,8 @@ jobs:
           assert report["stage"] == "full_episode"
           assert report["ready"] is True
           assert report["errors"] == []
-          assert report["required_asset_ids"]
-          assert report["required_voice_character_ids"]
+          assert len(report["required_asset_ids"]) == 22
+          assert len(report["required_voice_character_ids"]) == 2
           PY
 
       - name: Ensure no approved media or secrets are committed
