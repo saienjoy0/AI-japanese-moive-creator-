@@ -6,6 +6,7 @@ import hashlib
 import json
 from decimal import Decimal
 
+from ..generation.candidate_selector import readiness_issue_blocks_segment
 from ..generation.models import GenerationPlanEpisode, GenerationSegment
 from ..preparation.models import (
     DialogueDraft,
@@ -94,12 +95,7 @@ def validate_segment_canary_contract(
             )
 
     for issue in plan.readiness_report.errors:
-        applies_to_segment = issue.segment_id == segment.segment_id
-        applies_to_source_shot = (
-            issue.source_shot_id is not None
-            and issue.source_shot_id in segment.parent_shot_ids
-        )
-        if applies_to_segment or applies_to_source_shot:
+        if readiness_issue_blocks_segment(issue, segment):
             raise SegmentCanaryError(
                 f"selected segment has unresolved readiness error {issue.code}: "
                 f"{issue.message}"
