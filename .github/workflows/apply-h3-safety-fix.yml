@@ -1,15 +1,19 @@
 name: Apply H3 Safety Fix
 
-# Trigger the already-staged, reviewed patch after the workflow exists on the branch.
 on:
-  push:
-    branches: [feature/jp-drama-minimax-h3-core]
+  pull_request:
+    branches: [main]
     paths:
       - tools/apply_h3_safety_fix.py
+      - tools/h3_fix_parts/**
       - .github/workflows/apply-h3-safety-fix.yml
 
 permissions:
   contents: write
+
+concurrency:
+  group: apply-h3-safety-fix-pr15
+  cancel-in-progress: true
 
 jobs:
   apply:
@@ -51,6 +55,7 @@ jobs:
           git add -- \
             .github/workflows/apply-h3-safety-fix.yml \
             tools/apply_h3_safety_fix.py \
+            tools/h3_fix_parts \
             .github/workflows/jp-drama-minimax-h3-core.yml \
             .github/workflows/jp-drama-minimax-h3-paid-canary.yml \
             docs/pr14-minimax-h3-provider-core.md \
