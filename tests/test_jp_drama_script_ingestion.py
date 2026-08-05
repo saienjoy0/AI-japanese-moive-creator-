@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from src.apps.jp_drama import EpisodePackage
 from src.apps.jp_drama.ingestion import (
@@ -74,7 +75,7 @@ def test_normalize_script_text_handles_bom_newlines_tabs_and_blank_runs() -> Non
     assert normalized == "題名\n    台詞\n\n\n終わり\n"
 
 
-def test_fixture_ingestion_creates_a_valid_episode_package() -> None:
+def test_fixture_ingestion_creates_action_beat_episode_package() -> None:
     result = ingest_script(
         SCRIPT.read_text(encoding="utf-8"),
         llm=FixtureStructuredScriptLLM(FIXTURE),
@@ -85,8 +86,17 @@ def test_fixture_ingestion_creates_a_valid_episode_package() -> None:
     assert result.report.attempts == 1
     assert result.report.external_api_calls == 0
     assert len(result.report.warnings) == 1
-    assert len(result.episode_package.shot_plan.shots) == 3
+    shots = result.episode_package.shot_plan.shots
+    assert len(shots) == 9
+    assert [item.shot_id for item in shots] == [
+        f"shot_{beat:02d}_{action:02d}"
+        for beat in range(1, 4)
+        for action in range(1, 4)
+    ]
     assert result.episode_package.shot_plan.total_duration_seconds == 45
+    assert all(0.5 <= item.duration_seconds <= 15 for item in shots)
+    assert all("ActionBeat=" in (item.generation_notes or "") for item in shots)
+    assert sum(bool(item.dialogue) for item in shots) == 3
     assert all(
         estimate.provider == "provider-a"
         for estimate in result.episode_package.cost_plan.shot_estimates
@@ -103,6 +113,29 @@ def test_fixture_ingestion_creates_a_valid_episode_package() -> None:
         strict=True,
     )
     assert prepared.readiness_report.generation_ready is True
+    assert len(prepared.storyboard_frame_drafts) == 9
+
+
+def test_action_beats_assign_each_dialogue_exactly_once() -> None:
+    payload = _fixture_payload()
+    payload["beats"][0]["action_beats"][1]["dialogue_indexes"] = [1]
+
+    with pytest.raises(ValidationError, match="assigned exactly once"):
+        StructuredScriptDraft.model_validate(payload)
+
+
+def test_action_beat_order_and_character_scope_are_strict() -> None:
+    unordered = _fixture_payload()
+    unordered["beats"][0]["action_beats"][1]["order"] = 3
+    with pytest.raises(ValidationError, match="order must be contiguous"):
+        StructuredScriptDraft.model_validate(unordered)
+
+    unknown_character = _fixture_payload()
+    unknown_character["beats"][0]["action_beats"][0]["character_ids"] = [
+        "char_missing"
+    ]
+    with pytest.raises(ValidationError, match="outside parent beat"):
+        StructuredScriptDraft.model_validate(unknown_character)
 
 
 def test_compiler_is_deterministic_for_same_inputs_and_options() -> None:

@@ -137,7 +137,7 @@ def _run_cli(
     )
 
 
-def test_selector_rejects_multi_shot_and_selects_single_shot() -> None:
+def test_selector_uses_formal_single_shot_profile() -> None:
     prepared = _prepared()
     config = LiveProviderConfig.model_validate(_provider_payload())
     plan = _plan(prepared, config)
@@ -151,16 +151,15 @@ def test_selector_rejects_multi_shot_and_selects_single_shot() -> None:
     selected = next(
         item for item in plan.segments if item.segment_id == decision.selected_segment_id
     )
+    assert all(len(item.editorial_shots) == 1 for item in plan.segments)
+    assert not any(
+        "provider_multi_shot_not_supported" in item.reason_codes
+        for item in decision.rejected_segments
+    )
     assert len(selected.editorial_shots) == 1
     assert selected.provider_route_id == "wan/i2v"
     assert selected.audio_strategy == "silent"
     assert not selected.dialogue_slices
-    rejected_multi = [
-        item
-        for item in decision.rejected_segments
-        if "provider_multi_shot_not_supported" in item.reason_codes
-    ]
-    assert rejected_multi
 
 
 def test_materialized_canary_rebuilds_exact_mapping_trace() -> None:
@@ -230,14 +229,23 @@ def test_contract_rejects_wrong_prepared_episode_digest() -> None:
         validate_segment_canary_contract(changed, plan, segment)
 
 
-def test_contract_rejects_multi_shot_without_escape_hatch() -> None:
+def test_contract_rejects_synthetic_multi_shot_without_escape_hatch() -> None:
     prepared = _prepared()
     config = LiveProviderConfig.model_validate(_provider_payload())
     plan = _plan(prepared, config)
-    multi = next(item for item in plan.segments if len(item.editorial_shots) > 1)
+    single = plan.segments[0]
+    original_shot = single.editorial_shots[0]
+    synthetic_multi = single.model_copy(
+        update={
+            "editorial_shots": [
+                original_shot,
+                original_shot.model_copy(update={"order_within_segment": 2}),
+            ]
+        }
+    )
 
     with pytest.raises(SegmentCanaryError, match="exactly one EditorialShot"):
-        validate_segment_canary_contract(prepared, plan, multi)
+        validate_segment_canary_contract(prepared, plan, synthetic_multi)
 
 
 def test_cli_auto_preflight_makes_zero_paid_calls(tmp_path: Path) -> None:

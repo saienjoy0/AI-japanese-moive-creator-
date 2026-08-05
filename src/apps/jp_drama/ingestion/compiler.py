@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 from itertools import cycle
 
 from ..domain import (
@@ -33,7 +33,12 @@ from ..domain import (
     SourceKind,
     SourceRecord,
 )
-from .models import ScriptBeatDraft, StructuredScriptDraft
+from .models import (
+    ScriptActionBeatDraft,
+    ScriptBeatDraft,
+    ScriptDialogueDraft,
+    StructuredScriptDraft,
+)
 
 
 @dataclass(frozen=True)
@@ -48,6 +53,12 @@ class CompilationOptions:
     usage_constraints: tuple[str, ...] = (
         "第三者作品の固有名詞・特徴的台詞・画面構成を無断流用しない",
     )
+
+
+@dataclass(frozen=True)
+class _ActionShotSource:
+    beat: ScriptBeatDraft
+    action: ScriptActionBeatDraft
 
 
 def compile_structured_script(
@@ -107,19 +118,27 @@ def compile_structured_script(
             adapted_beat_id=f"adapted_{beat.beat_id}",
             adapted_summary=beat.summary,
             transformation_notes=(
-                "ユーザー提供の日本語台本を、映像生成可能な場面・動作・台詞へ構造化"
+                "ユーザー提供の日本語台本を、意味境界付きActionBeat、動作、台詞へ構造化"
             ),
         )
         for beat in draft.beats
     ]
 
-    durations = _distribute_duration(
+    action_sources = [
+        _ActionShotSource(beat=beat, action=action)
+        for beat in draft.beats
+        for action in beat.action_beats
+    ]
+    durations = _distribute_weighted_duration(
         draft.target_duration_seconds,
-        len(draft.beats),
+        [item.action.estimated_duration_seconds for item in action_sources],
     )
     shots = [
-        _build_shot(beat, duration, index)
-        for index, (beat, duration) in enumerate(zip(draft.beats, durations))
+        _build_shot(source, duration, order)
+        for order, (source, duration) in enumerate(
+            zip(action_sources, durations),
+            start=1,
+        )
     ]
 
     estimates = []
@@ -169,7 +188,7 @@ def compile_structured_script(
             transcript=normalized_script,
             captured_at=selected.created_at,
             rights_status=selected.rights_status,
-            provenance_notes="PR10 normal Japanese script ingestion",
+            provenance_notes="PR15 semantic ActionBeat Japanese script ingestion",
             usage_constraints=list(selected.usage_constraints),
         ),
         beat_sheet=BeatSheet(
@@ -199,7 +218,7 @@ def compile_structured_script(
                 retained_elements=["ユーザー提供台本の物語構造と台詞"],
                 transformed_elements=[
                     "場面の構造化",
-                    "ショット分割",
+                    "意味境界付きActionBeat分割",
                     "生成向け視覚記述",
                     "台詞タイミング",
                 ],
@@ -268,51 +287,80 @@ def _beat_types(count: int) -> list[BeatType]:
     return result
 
 
-def _distribute_duration(total: float, count: int) -> list[float]:
-    total_ms = round(total * 1000)
-    base_ms, remainder = divmod(total_ms, count)
-    durations = [
-        (base_ms + (1 if index < remainder else 0)) / 1000
-        for index in range(count)
-    ]
-    if any(duration <= 0 or duration > 20 for duration in durations):
-        raise ValueError("compiled shot duration must be between 0 and 20 seconds")
+def _distribute_weighted_duration(
+    total_seconds: float,
+    weights: list[float],
+) -> list[float]:
+    if not weights or any(weight <= 0 for weight in weights):
+        raise ValueError("ActionBeat duration weights must be positive")
+    total_ms = round(total_seconds * 1000)
+    decimal_weights = [Decimal(str(item)) for item in weights]
+    weight_sum = sum(decimal_weights, start=Decimal("0"))
+    exact = [Decimal(total_ms) * weight / weight_sum for weight in decimal_weights]
+    allocated = [int(value.to_integral_value(rounding=ROUND_FLOOR)) for value in exact]
+    remainder = total_ms - sum(allocated)
+    fractional_order = sorted(
+        range(len(exact)),
+        key=lambda index: (-(exact[index] - allocated[index]), index),
+    )
+    for index in fractional_order[:remainder]:
+        allocated[index] += 1
+    durations = [milliseconds / 1000 for milliseconds in allocated]
+    if any(duration < 0.5 or duration > 15.0 for duration in durations):
+        raise ValueError(
+            "scaled ActionBeat duration must stay between 0.5 and 15 seconds; "
+            "add or rebalance semantic ActionBeats"
+        )
+    if round(sum(durations) * 1000) != total_ms:
+        raise ValueError("ActionBeat duration allocation must preserve episode duration")
     return durations
 
 
 def _build_shot(
-    beat: ScriptBeatDraft,
+    source: _ActionShotSource,
     duration: float,
-    index: int,
+    order: int,
 ) -> Shot:
-    dialogue = _dialogue_cues(beat, duration)
+    beat = source.beat
+    action = source.action
+    assigned_dialogue = [
+        beat.dialogue[index - 1]
+        for index in action.dialogue_indexes
+    ]
+    dialogue = _dialogue_cues(
+        assigned_dialogue,
+        duration,
+        beat_order=beat.order,
+        action_order=action.order,
+    )
     strategy = (
         RenderStrategy.VIDEO_PLUS_TTS
         if dialogue
         else RenderStrategy.STILL_MOTION
     )
-    shot_sizes = ["medium", "medium_close_up", "close_up", "full"]
+    shot_sizes = ["full", "medium", "medium_close_up", "close_up"]
     movements = ["static", "push_in", "pan_right", "follow"]
+    camera_note = action.camera_hint or beat.camera_hint
 
     return Shot(
-        shot_id=f"shot_{beat.order:02d}",
-        order=beat.order,
+        shot_id=f"shot_{beat.order:02d}_{action.order:02d}",
+        order=order,
         adapted_beat_id=f"adapted_{beat.beat_id}",
         duration_seconds=duration,
         location_id=beat.scene_id,
-        character_ids=beat.character_ids,
+        character_ids=action.character_ids,
         prop_ids=[],
-        action=beat.action,
+        action=action.visual_action,
         visual_description=(
-            f"{beat.summary}。{beat.action}"
-            + (f" カメラ意図: {beat.camera_hint}" if beat.camera_hint else "")
+            f"{beat.summary}。{action.summary}。{action.visual_action}"
+            + (f" カメラ意図: {camera_note}" if camera_note else "")
         ),
         dialogue=dialogue,
         camera=CameraPlan(
-            shot_size=shot_sizes[index % len(shot_sizes)],
+            shot_size=shot_sizes[(order - 1) % len(shot_sizes)],
             angle="eye_level",
-            movement=movements[index % len(movements)],
-            speed="slow" if index == len(shot_sizes) - 1 else "normal",
+            movement=movements[(order - 1) % len(movements)],
+            speed="slow" if action.boundary_after == "reaction" else "normal",
         ),
         audio=AudioPlan(
             ambience=beat.ambience,
@@ -324,30 +372,41 @@ def _build_shot(
         continuity_notes=[
             "同一人物の顔・髪型・衣装を前後ショットで維持する",
             "同一場所のレイアウトと照明方向を維持する",
+            *action.continuity_effects,
         ],
-        generation_notes="PR10の決定的コンパイラが生成",
+        generation_notes=(
+            f"ActionBeat={action.action_beat_id}; "
+            f"boundary_before={action.boundary_before}; "
+            f"boundary_after={action.boundary_after}; "
+            f"confidence={action.confidence:.3f}"
+        ),
     )
 
 
 def _dialogue_cues(
-    beat: ScriptBeatDraft,
+    dialogue: list[ScriptDialogueDraft],
     duration: float,
+    *,
+    beat_order: int,
+    action_order: int,
 ) -> list[DialogueCue]:
-    if not beat.dialogue:
+    if not dialogue:
         return []
-    usable_start = 0.8
-    usable_end = max(usable_start + 0.5, duration - 0.4)
-    segment = (usable_end - usable_start) / len(beat.dialogue)
+    usable_start = min(0.8, max(0.1, duration * 0.15))
+    usable_end = max(usable_start + 0.5, duration - min(0.4, duration * 0.1))
+    segment = (usable_end - usable_start) / len(dialogue)
     cues = []
-    for index, item in enumerate(beat.dialogue):
+    for index, item in enumerate(dialogue):
         start = usable_start + segment * index
-        cue_duration = min(4.0, max(0.8, segment * 0.75))
+        cue_duration = min(4.0, max(0.5, segment * 0.75))
         end = min(usable_end, start + cue_duration)
         if end <= start:
             end = min(duration, start + 0.5)
         cues.append(
             DialogueCue(
-                cue_id=f"cue_{beat.order:02d}_{index + 1:02d}",
+                cue_id=(
+                    f"cue_{beat_order:02d}_{action_order:02d}_{index + 1:02d}"
+                ),
                 speaker_character_id=item.speaker_character_id,
                 text=item.text,
                 start_seconds=round(start, 3),

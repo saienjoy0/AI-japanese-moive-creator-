@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..domain import EpisodePackage
+from ..domain import EpisodePackage, RenderStrategy
 from .models import (
     BudgetSnapshot,
     MappingTrace,
@@ -156,7 +156,10 @@ def _content_warnings(package: EpisodePackage) -> list[ReadinessIssue]:
                 )
             )
         estimate = estimates[shot.shot_id]
-        if estimate.fallback_strategy is None:
+        if (
+            estimate.fallback_strategy is None
+            and shot.render_strategy is not RenderStrategy.STILL_MOTION
+        ):
             warnings.append(
                 ReadinessIssue(
                     code="fallback_missing",

@@ -96,12 +96,18 @@ class DashScopeStructuredScriptLLM:
         schema = StructuredScriptDraft.model_json_schema()
         system = (
             "あなたは日本語縦型ショートドラマの構成担当です。"
-            "入力台本から人物、場所、場面、動作、台詞を抽出し、"
+            "入力台本から人物、場所、物語Beat、動作、台詞を抽出し、"
             "必ず指定JSON Schemaだけを返してください。"
+            "各Beatを、1つの視覚的目的だけを持つActionBeatへ意味分割してください。"
+            "ActionBeat境界は場面変更、話者交代、動作完了、反応、カメラ再構成の"
+            "いずれかを根拠とし、単なる固定秒数では作らないでください。"
+            "各台詞はdialogue_indexesでちょうど1つのActionBeatへ割り当て、"
+            "欠落や重複を作らないでください。"
+            "1 ActionBeatの推定尺は0.5秒以上15秒以下にしてください。"
             "事実が不明でも生成に必須でない項目はunresolved_itemsへ入れ、"
             "人物や台詞を勝手に増やさないでください。"
-            "character_id、scene_id、beat_idは英数字と._-だけを使用してください。"
-            "beatsは物語順に最低3件、orderは1から連番にしてください。"
+            "character_id、scene_id、beat_id、action_beat_idは英数字と._-だけを"
+            "使用してください。beatsとaction_beatsのorderは1から連番にしてください。"
         )
         user_payload: dict[str, Any] = {
             "script": normalized_script,
@@ -111,7 +117,7 @@ class DashScopeStructuredScriptLLM:
             user_payload["previous_payload"] = previous_payload
             user_payload["validation_errors"] = validation_errors or []
             user_payload["instruction"] = (
-                "前回JSONの検証エラーだけを修正し、台本の内容は変更しない"
+                "前回JSONの検証エラーだけを修正し、台本の内容、人物、台詞を変更しない"
             )
 
         self.calls += 1
