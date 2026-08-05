@@ -35,7 +35,9 @@ from .wan_references import (
     WanMasterReferenceError,
     WanMasterReferenceManifest,
     build_wan_master_reference_manifest,
-    verify_wan_master_reference_manifest_for_episode as verify_wan_master_reference_manifest,
+    load_wan_master_reference_manifest,
+    verify_wan_master_reference_manifest,
+    write_wan_master_reference_manifest,
 )
 
 __all__ = [
@@ -63,9 +65,11 @@ __all__ = [
     "build_wan_master_reference_manifest",
     "load_bindings",
     "load_bundle",
+    "load_wan_master_reference_manifest",
     "materialize_h3_canary_asset_manifest",
     "prepared_content_digest",
     "publish_h3_assets",
     "verify_wan_master_reference_manifest",
     "write_bundle",
+    "write_wan_master_reference_manifest",
 ]
