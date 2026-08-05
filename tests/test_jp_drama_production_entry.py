@@ -118,6 +118,7 @@ def test_segment_artifact_manifest_is_digest_bound() -> None:
         frame_count=90,
         duration_seconds=3,
         audio_present=False,
+        approval_digest="sha256:" + "c" * 64,
         valid=True,
     )
     manifest = SegmentArtifactManifest.build_with_digest(
@@ -133,6 +134,25 @@ def test_segment_artifact_manifest_is_digest_bound() -> None:
     changed["artifacts"][0]["output_path"] = "/tmp/other.mp4"
     with pytest.raises(ValueError, match="digest"):
         SegmentArtifactManifest.model_validate(changed)
+
+
+def test_valid_segment_artifact_requires_approval_digest() -> None:
+    digest = "sha256:" + "a" * 64
+    with pytest.raises(ValueError, match="approval_digest"):
+        SegmentArtifact(
+            segment_id="segment-1",
+            generation_plan_digest=digest,
+            provider_route_id="mock/video",
+            output_path="/tmp/segment.mp4",
+            output_sha256="sha256:" + "b" * 64,
+            width=90,
+            height=160,
+            fps=30,
+            frame_count=90,
+            duration_seconds=3,
+            audio_present=False,
+            valid=True,
+        )
 
 
 def test_production_render_is_fail_closed_with_zero_calls(tmp_path: Path) -> None:
