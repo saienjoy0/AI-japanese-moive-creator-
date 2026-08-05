@@ -10,7 +10,12 @@ from typing import Literal
 
 from .minimax_h3_client import MiniMaxH3Client
 from .minimax_h3_config import MiniMaxH3ProviderConfig
-from .minimax_h3_models import H3ContentItem, H3VideoGenerationRequest
+from .minimax_h3_models import (
+    H3ContentItem,
+    H3ReferenceAsset,
+    H3ReferenceBundle,
+    H3VideoGenerationRequest,
+)
 from .provider_core import (
     CostEstimate,
     Money,
@@ -101,7 +106,9 @@ class MiniMaxH3Adapter:
         errors: list[ValidationIssue] = []
         capabilities = self.capabilities()
         if request.modality != "video":
-            errors.append(ValidationIssue(code="modality_not_supported", message="H3 is video-only"))
+            errors.append(
+                ValidationIssue(code="modality_not_supported", message="H3 is video-only")
+            )
         if not capabilities.supports(request.required_capabilities):
             errors.append(
                 ValidationIssue(
@@ -165,18 +172,27 @@ class MiniMaxH3Adapter:
                 )
             )
         if self.mode == "first_frame":
-            if sum(item.role == "first_frame" for item in request.references) != 1:
+            frame_roles = [item.role for item in frame_refs]
+            if (
+                not frame_refs
+                or len(frame_refs) > 2
+                or frame_roles.count("first_frame") > 1
+                or frame_roles.count("last_frame") > 1
+            ):
                 errors.append(
                     ValidationIssue(
-                        code="h3_first_frame_required",
-                        message="H3 first-frame route requires exactly one first_frame",
+                        code="h3_frame_input_required",
+                        message=(
+                            "H3 frame route requires one first_frame, one last_frame, "
+                            "or one of each"
+                        ),
                     )
                 )
             if reference_refs:
                 errors.append(
                     ValidationIssue(
                         code="h3_first_frame_has_reference_inputs",
-                        message="H3 first-frame route rejects reference-mode inputs",
+                        message="H3 frame route rejects reference-mode inputs",
                     )
                 )
         if self.mode == "reference":
@@ -234,9 +250,18 @@ class MiniMaxH3Adapter:
             item.role in {"character", "costume", "location", "prop", "storyboard"}
             for item in request.references
         )
-        has_video_reference = any(
-            item.role in {"motion_reference", "video_reference"}
+        video_references = [
+            item
             for item in request.references
+            if item.role in {"motion_reference", "video_reference"}
+        ]
+        if any(item.duration_seconds is None for item in video_references):
+            return CostEstimate(
+                confidence="unknown",
+                price_snapshot_id=f"minimax-h3-{self.config.price_snapshot_date}",
+            )
+        reference_video_seconds = sum(
+            item.duration_seconds or 0 for item in video_references
         )
         actual_resolution = (
             self.config.resolution if request.resolution == "720P" else request.resolution
@@ -244,11 +269,12 @@ class MiniMaxH3Adapter:
         amount = self.config.estimate_cost_usd(
             duration_seconds=request.duration_seconds,
             reference_image_count=image_count,
+            reference_video_seconds=reference_video_seconds,
             resolution=actual_resolution,
         )
         return CostEstimate(
             native_cost=Money(amount=amount, currency="USD"),
-            confidence="estimated" if has_video_reference else "exact",
+            confidence="exact",
             price_snapshot_id=f"minimax-h3-{self.config.price_snapshot_date}",
         )
 
@@ -274,12 +300,24 @@ class MiniMaxH3Adapter:
             duration=int(math.ceil(request.duration_seconds)),
             ratio="adaptive" if self.mode == "first_frame" else request.aspect_ratio,
         )
+        bundle = H3ReferenceBundle(
+            segment_id=request.shot_id,
+            assets=[
+                asset
+                for reference in sorted(request.references, key=lambda item: item.order)
+                if (asset := _reference_asset_to_h3(reference)) is not None
+            ],
+        )
         payload = h3_request.model_dump(mode="json", exclude_none=True)
+        metadata = {
+            "h3_reference_bundle": bundle.model_dump(mode="json", exclude_none=True),
+        }
         fingerprint_payload = json.dumps(
             {
                 "route_id": self.route_id,
                 "api_schema": "minimax-h3-v2",
                 "request": payload,
+                "reference_bundle": metadata["h3_reference_bundle"],
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -290,21 +328,13 @@ class MiniMaxH3Adapter:
             operation_id=request.task_id,
             request_fingerprint=f"sha256:{hashlib.sha256(fingerprint_payload).hexdigest()}",
             payload=payload,
+            metadata=metadata,
         )
 
     def submit(self, request: PreparedProviderRequest) -> ProviderSubmission:
-        if self.client is None:
-            raise ProviderCoreError("MiniMax H3 execution requires an injected client")
-        if request.route_id != self.route_id:
-            raise ProviderCoreError("prepared request route does not match this H3 adapter")
-        result = self.client.submit(H3VideoGenerationRequest.model_validate(request.payload))
-        return ProviderSubmission(
-            route_id=self.route_id,
-            operation_id=request.operation_id,
-            status="queued",
-            provider_task_id=result.task_id,
-            provider_request_id=result.request_id,
-            metadata={"request_fingerprint": request.request_fingerprint},
+        raise ProviderCoreError(
+            "MiniMax H3 live submission must use MiniMaxH3Executor so the durable "
+            "cost, preflight, and duplicate-submission gates cannot be bypassed"
         )
 
     def poll(self, submission: ProviderSubmission) -> ProviderPollResult:
@@ -395,3 +425,36 @@ def _reference_to_h3(reference: ReferenceAsset) -> H3ContentItem | None:
     if reference.role in {"driving_audio", "voice_reference", "reference_audio"}:
         return H3ContentItem.media_item("audio_url", reference.uri, "reference_audio")
     return None
+
+
+def _reference_asset_to_h3(reference: ReferenceAsset) -> H3ReferenceAsset | None:
+    if reference.role in {"character", "costume", "location", "prop", "storyboard"}:
+        kind = "image"
+        role = "reference_image"
+    elif reference.role in {"first_frame", "last_frame"}:
+        kind = "image"
+        role = reference.role
+    elif reference.role in {"motion_reference", "video_reference"}:
+        kind = "video"
+        role = "reference_video"
+    elif reference.role in {"driving_audio", "voice_reference", "reference_audio"}:
+        kind = "audio"
+        role = "reference_audio"
+    else:
+        return None
+    return H3ReferenceAsset(
+        asset_id=reference.asset_id,
+        kind=kind,
+        url=reference.uri,
+        role=role,
+        priority=reference.order + 1,
+        size_bytes=reference.size_bytes,
+        duration_seconds=reference.duration_seconds,
+        fps=reference.fps,
+        aspect_ratio=reference.aspect_ratio,
+        width_px=reference.width_px,
+        height_px=reference.height_px,
+        media_format=reference.media_format,
+        codec=reference.codec,
+        sha256=reference.sha256,
+    )
