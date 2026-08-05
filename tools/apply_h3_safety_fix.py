@@ -91,7 +91,6 @@ def main() -> None:
         (parts_dir / name).unlink()
     parts_dir.rmdir()
     (root / "tools/apply_h3_safety_fix.py").unlink()
-    (root / ".github/workflows/apply-h3-safety-fix.yml").unlink()
 
 
 if __name__ == "__main__":
