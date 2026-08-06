@@ -1,0 +1,35 @@
+{
+  "segment_id": "E01-G01",
+  "timeline": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 2.0,
+      "action": "Close-up of the unfinished harbor watercolor; the muddy blue-gray brush makes one short stroke and stops",
+      "camera": "macro close-up, extremely slow push-in"
+    },
+    {
+      "start_seconds": 2.0,
+      "end_seconds": 4.0,
+      "action": "Brief vivid memory of Meiji-era Yokohama harbor, blue sea, white sails and warm magenta-red waterline",
+      "camera": "short memory flash cut, gentle floating push"
+    },
+    {
+      "start_seconds": 4.0,
+      "end_seconds": 6.5,
+      "action": "The same boy slowly mixes cheap blue and red watercolor; the mixture becomes muddy gray",
+      "camera": "medium close shot, desk and hands dominant"
+    },
+    {
+      "start_seconds": 6.5,
+      "end_seconds": 10.0,
+      "action": "The boy stops painting, becomes quietly disappointed, then turns only his eyes and head toward the neighboring desk",
+      "camera": "medium shot, almost imperceptible push-in"
+    }
+  ],
+  "extra_constraints": [
+    "preserve the same Japanese boy, age and school uniform",
+    "preserve the same classroom, desk, unfinished painting and paint box",
+    "the harbor memory must not introduce modern ships or buildings",
+    "no visible speaking for the internal monologue"
+  ]
+}
