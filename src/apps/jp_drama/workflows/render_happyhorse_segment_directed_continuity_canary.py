@@ -1,12 +1,12 @@
 """Run HappyHorse continuity with dialogue-aware and motion-first prompting.
 
 The existing continuity wrapper safely binds the immediately previous segment's
-SHA-verified end frame as an additional R2V reference.  This module adds the two
+SHA-verified end frame as an additional R2V reference. This module adds the two
 prompting rules required by production use:
 
 1. dialogue tagged as an inner monologue is delivered as off-screen/internal
    voice-over and must never request visible lip synchronization;
-2. the previous segment frame defines only the opening state.  The generated
+2. the previous segment frame defines only the opening state. The generated
    shot must evolve from that state according to the planned timing instead of
    freezing the previous composition for the entire clip.
 
@@ -49,6 +49,26 @@ _SEGMENT_DIRECTIONS: dict[str, str] = {
         "focus or minimal reframing while the camera remains mostly static. "
         "P02 remains inside P01 for the entire segment. C01 never touches, removes, "
         "or steals either paint in E01-G02. Do not return to the harbor memory."
+    ),
+    "E01-G03": (
+        "Directed shot progression for E01-G03: "
+        "0.0-1.5s begin from the immediately previous segment's final frame with "
+        "C01's face centered and his eyes lowered toward the open P01 just below "
+        "the frame. Keep his mouth closed during the inner voice-over. "
+        "1.5-3.5s use a slow controlled tilt or minimal downward reframe to show "
+        "the open wooden P01 on the desk and exactly two P02 paint cakes, one indigo "
+        "and one magenta. C02 and all other people remain off-screen. "
+        "3.5-6.5s C01's right hand takes both P02 together in one continuous action "
+        "and places both into C01's anatomical right coat pocket, which is on "
+        "screen-left in this frontal composition. No duplication, dropping, color "
+        "swapping, hand switching, or leaving either paint inside P01. "
+        "6.5-8.0s the same right hand returns and gently closes P01; P01 remains on "
+        "the desk and C01 does not carry the box away. "
+        "8.0-10.0s reframe to C01's face and upper body. He freezes with subtly "
+        "widened eyes and tense breathing, changing from fixation to fear. "
+        "At the end exactly two P02 are fully inside C01's anatomical right coat "
+        "pocket, P01 is closed on the desk, and both hands are empty. Do not show "
+        "discovery, escape, a teacher, C02, or later consequences."
     ),
 }
 

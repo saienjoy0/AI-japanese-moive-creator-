@@ -81,8 +81,22 @@ def test_g2_direction_prevents_early_theft_and_pins_two_paints() -> None:
     assert "Do not return to the harbor memory" in prompt
 
 
-def test_other_segments_do_not_receive_g2_specific_direction() -> None:
-    assert append_segment_direction("base", segment_id="E01-G03") == "base"
+def test_g3_direction_pins_anatomical_right_pocket_and_single_action() -> None:
+    prompt = append_segment_direction("base", segment_id="E01-G03")
+
+    assert "both P02 together in one continuous action" in prompt
+    assert "anatomical right coat pocket" in prompt
+    assert "screen-left in this frontal composition" in prompt
+    assert "No duplication, dropping, color swapping, hand switching" in prompt
+    assert "same right hand returns and gently closes P01" in prompt
+    assert "exactly two P02 are fully inside" in prompt
+    assert "P01 is closed on the desk" in prompt
+    assert "both hands are empty" in prompt
+    assert "C02 and all other people remain off-screen" in prompt
+
+
+def test_unreviewed_segment_gets_no_specific_direction() -> None:
+    assert append_segment_direction("base", segment_id="E01-G04") == "base"
 
 
 def test_continuity_frame_is_opening_anchor_not_frozen_composition(
@@ -116,14 +130,15 @@ def test_continuity_frame_still_respects_nine_image_limit(monkeypatch) -> None:
 
 
 def test_context_installs_and_restores_both_prompt_policies() -> None:
-    bundle = _bundle("僕(inner_monologue): あの二色さえあれば……")
+    bundle = _bundle("僕(inner_monologue): 見るだけ……")
     original_build = base.build_happyhorse_prompt
     original_continuity = continuity.append_continuity_prompt
 
-    with install_directed_prompt("E01-G02"):
+    with install_directed_prompt("E01-G03"):
         prompt = base.build_happyhorse_prompt(bundle)
         assert "Inner voice-over" in prompt
-        assert "Directed shot progression for E01-G02" in prompt
+        assert "見るだけ……" in prompt
+        assert "Directed shot progression for E01-G03" in prompt
         assert continuity.append_continuity_prompt is not original_continuity
 
     assert base.build_happyhorse_prompt is original_build
