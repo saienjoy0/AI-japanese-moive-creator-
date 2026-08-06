@@ -1,0 +1,33 @@
+name: PR31 Keyframe Transfer Probe
+
+on:
+  push:
+    branches:
+      - feature/pr31-happyhorse-multiclip-production
+    paths:
+      - .github/workflows/pr31-keyframe-transfer-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download full-resolution candidate
+        env:
+          IMAGE_URL: "https://media.canva.com/v2/image-resize/format:JPG/height:1672/quality:45/uri:ifs%3A%2F%2FM%2Fa252025e-940e-4f7a-8b1e-389c9acef420/watermark:F/width:941?csig=AAAAAAAAAAAAAAAAAAAAAA2e92hGusoRwoelaco2cqLg1xTh10xHi_0PFzfUx1Id&exp=1786004326&osig=AAAAAAAAAAAAAAAAAAAAAFFh4zvIsnB37hPD3E5u25BePzqveZ-udbcveQBeJLhH&signer=media-rpc"
+        run: |
+          curl --fail --location --silent --show-error "$IMAGE_URL" --output /tmp/frame.jpg
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import hashlib
+          path = Path('/tmp/frame.jpg')
+          with Image.open(path) as image:
+              print('dimensions', image.size)
+              assert image.size == (941, 1672)
+          digest = hashlib.sha256(path.read_bytes()).hexdigest()
+          print('sha256', digest)
+          PY
