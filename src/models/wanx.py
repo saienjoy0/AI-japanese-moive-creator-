@@ -422,7 +422,7 @@ class WanxModel(VideoGenModel):
                     watermark=watermark,
                     extra_headers=extra_media_headers,
                 )
-            elif final_model_name.startswith('happyhorse-1.0-'):
+            elif final_model_name.startswith(('happyhorse-1.0-', 'happyhorse-1.1-')):
                 # HappyHorse model family (I2V, R2V, T2V, V2V)
                 resolver_model = final_model_name
                 backend = self._resolve_provider_backend_for_model(resolver_model)
@@ -430,7 +430,7 @@ class WanxModel(VideoGenModel):
 
                 # Build media array based on model type
                 media = None
-                if final_model_name == 'happyhorse-1.0-i2v':
+                if final_model_name in ('happyhorse-1.0-i2v', 'happyhorse-1.1-i2v'):
                     # I2V: first_frame image
                     image_ref = img_path or img_url
                     if image_ref:
@@ -445,11 +445,13 @@ class WanxModel(VideoGenModel):
                         media = [{"type": "first_frame", "url": resolved.value}]
                         self._merge_media_headers(extra_media_headers, resolved.headers)
 
-                elif final_model_name == 'happyhorse-1.0-r2v':
+                elif final_model_name in ('happyhorse-1.0-r2v', 'happyhorse-1.1-r2v'):
                     # R2V: reference images (1-9)
                     ref_image_urls = kwargs.get('ref_image_urls', [])
-                    if not ref_image_urls:
-                        raise ValueError("ref_image_urls is required for happyhorse-1.0-r2v")
+                    if not 1 <= len(ref_image_urls) <= 9:
+                        raise ValueError(
+                            f"ref_image_urls must contain 1 to 9 images for {final_model_name}"
+                        )
                     resolved_refs = resolve_media_inputs(
                         ref_image_urls,
                         model_name=resolver_model,
@@ -492,13 +494,17 @@ class WanxModel(VideoGenModel):
                                 self._merge_media_headers(extra_media_headers, r.headers)
                 # T2V: no media needed
 
+                ratio = kwargs.get('ratio')
+                if final_model_name.endswith('-r2v') and not ratio:
+                    ratio = '9:16'
+
                 video_url = self._generate_hh_http(
                     prompt=prompt,
                     model_name=final_model_name,
                     media=media,
                     resolution=resolution,
                     duration=duration,
-                    ratio=kwargs.get('ratio'),
+                    ratio=ratio,
                     seed=seed,
                     watermark=watermark,
                     audio_setting=kwargs.get('audio_setting'),
@@ -808,7 +814,7 @@ class WanxModel(VideoGenModel):
             payload["input"]["media"] = media
 
         # Model-specific parameters
-        if ratio and model_name != "happyhorse-1.0-i2v":
+        if ratio and not model_name.endswith('-i2v'):
             # I2V doesn't support ratio parameter
             payload["parameters"]["ratio"] = ratio
         if seed:
