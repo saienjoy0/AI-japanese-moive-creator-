@@ -1,0 +1,104 @@
+name: Japanese Drama Continuity Frame
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/jp-drama-continuity-frame.yml"
+      - "src/apps/jp_drama/workflows/extract_segment_end_frame.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_segment_continuity_canary.py"
+      - "tests/test_jp_drama_continuity_frame.py"
+  workflow_run:
+    workflows: ["Japanese Drama E01-G01 HappyHorse Hosted Recovery"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful workflow run containing the generated MP4"
+        required: true
+        default: "31085709337"
+      source_artifact:
+        description: "Artifact containing the generated MP4"
+        required: true
+        default: "happyhorse-e01-g01-r2v-10s-hosted-result"
+      segment_id:
+        description: "Source segment ID"
+        required: true
+        default: "E01-G01"
+      video_filename:
+        description: "MP4 filename inside the source artifact"
+        required: true
+        default: "E01-G01-r2v.mp4"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  contract-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install pytest
+      - name: Test continuity extraction and fail-closed handoff
+        run: python -m pytest -q tests/test_jp_drama_continuity_frame.py
+
+  derive:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.source_run_id }}
+      SOURCE_ARTIFACT: ${{ github.event_name == 'workflow_run' && 'happyhorse-e01-g01-r2v-10s-hosted-result' || inputs.source_artifact }}
+      SEGMENT_ID: ${{ github.event_name == 'workflow_run' && 'E01-G01' || inputs.segment_id }}
+      VIDEO_FILENAME: ${{ github.event_name == 'workflow_run' && 'E01-G01-r2v.mp4' || inputs.video_filename }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+      - name: Download successful segment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          path: ${{ runner.temp }}/source
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Extract the reusable prior-segment end frame
+        run: |
+          python -m src.apps.jp_drama.workflows.extract_segment_end_frame \
+            --segment-id "$SEGMENT_ID" \
+            --video "$RUNNER_TEMP/source/$VIDEO_FILENAME" \
+            --output-dir "output/jp_drama/continuity/$SEGMENT_ID" \
+            --offset-seconds 0.10 \
+            --print-report
+      - name: Upload continuity frame and SHA-bound metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-drama-${{ env.SEGMENT_ID }}-continuity-frame
+          path: output/jp_drama/continuity/${{ env.SEGMENT_ID }}
+          if-no-files-found: error
+          retention-days: 30
