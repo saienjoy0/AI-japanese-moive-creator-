@@ -168,3 +168,16 @@ def test_path_traversal_is_rejected() -> None:
     plan = HappyHorseMultiClipPlan.build_with_digest(**raw)
     with pytest.raises(HappyHorseMultiClipError, match="escapes repository root"):
         verify_plan_files(plan, repository_root=REPO_ROOT)
+
+
+def test_render_uses_four_independent_one_call_ledgers() -> None:
+    workflow = (
+        REPO_ROOT
+        / "src/apps/jp_drama/workflows/render_happyhorse_multiclip_production.py"
+    ).read_text(encoding="utf-8")
+
+    assert "shot_id=clip.clip_id" in workflow
+    assert "max_api_calls=1" in workflow
+    assert "max_cost_cny=reserve_each" in workflow
+    assert "_clip_ledger_path(ledger_file, clip.clip_id)" in workflow
+    assert "ledger_files" in workflow
