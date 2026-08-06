@@ -11,6 +11,7 @@ permissions:
   actions: write
   contents: read
   pull-requests: read
+  issues: write
 
 jobs:
   contract-test:
@@ -30,9 +31,12 @@ jobs:
           assert "github.event.issue.number == 34" in text
           assert "github.event.comment.user.login == github.repository_owner" in text
           assert "RUN_E01_G01_HAPPYHORSE_R2V_10S_ONCE" in text
+          assert "CHECK_E01_G01_HAPPYHORSE_STATUS" in text
           assert "jp-drama-e01-g01-happyhorse-paid-canary.yml/dispatches" in text
+          assert "event=workflow_dispatch" in text
           assert "sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e" in text
           assert "actions: write" in text
+          assert "issues: write" in text
           PY
 
   dispatch-paid-canary:
@@ -67,3 +71,32 @@ jobs:
             -f ref=main \
             -f "inputs[approval_digest]=$APPROVAL_DIGEST" \
             -f "inputs[confirm_paid_run]=$CONFIRM_PHRASE"
+
+  report-paid-canary-status:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.issue.number == 34 &&
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == 'CHECK_E01_G01_HAPPYHORSE_STATUS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read latest paid-canary workflow_dispatch run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_JSON="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/jp-drama-e01-g01-happyhorse-paid-canary.yml/runs?event=workflow_dispatch&per_page=1" --jq '.workflow_runs[0]')"
+          test -n "$RUN_JSON"
+          test "$RUN_JSON" != "null"
+          RUN_ID="$(jq -r '.id' <<<"$RUN_JSON")"
+          RUN_NUMBER="$(jq -r '.run_number' <<<"$RUN_JSON")"
+          STATUS="$(jq -r '.status' <<<"$RUN_JSON")"
+          CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$RUN_JSON")"
+          URL="$(jq -r '.html_url' <<<"$RUN_JSON")"
+          CREATED_AT="$(jq -r '.created_at' <<<"$RUN_JSON")"
+          BODY=$(printf 'E01-G01 HappyHorse R2V status\n\n- run: #%s\n- run_id: `%s`\n- status: `%s`\n- conclusion: `%s`\n- created_at: `%s`\n- URL: %s' "$RUN_NUMBER" "$RUN_ID" "$STATUS" "$CONCLUSION" "$CREATED_AT" "$URL")
+          gh api --method POST \
+            "/repos/$GITHUB_REPOSITORY/issues/34/comments" \
+            -f "body=$BODY"
