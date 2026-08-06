@@ -6,6 +6,9 @@ on:
       - feature/pr31-happyhorse-multiclip-production
     paths:
       - .github/workflows/pr31-keyframe-transfer-probe.yml
+  pull_request:
+    paths:
+      - .github/workflows/pr31-keyframe-transfer-probe.yml
 
 permissions:
   contents: read
@@ -15,6 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Pillow
+        run: python -m pip install Pillow
       - name: Download full-resolution candidate
         env:
           IMAGE_URL: "https://media.canva.com/v2/image-resize/format:JPG/height:1672/quality:45/uri:ifs%3A%2F%2FM%2Fa252025e-940e-4f7a-8b1e-389c9acef420/watermark:F/width:941?csig=AAAAAAAAAAAAAAAAAAAAAA2e92hGusoRwoelaco2cqLg1xTh10xHi_0PFzfUx1Id&exp=1786004326&osig=AAAAAAAAAAAAAAAAAAAAAFFh4zvIsnB37hPD3E5u25BePzqveZ-udbcveQBeJLhH&signer=media-rpc"
