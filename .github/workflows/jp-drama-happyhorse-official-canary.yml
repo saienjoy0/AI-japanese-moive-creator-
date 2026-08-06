@@ -64,7 +64,7 @@ jobs:
           config = LiveProviderConfig.load(
               "examples/jp_drama/dashscope_happyhorse_live_providers.json"
           )
-          assert config.dashscope.region == "singapore"
+          assert config.dashscope.region == "beijing"
           assert config.dashscope.native_av_video_model == "happyhorse-1.1-i2v"
           assert config.dashscope.video_resolution == "720P"
           assert config.dashscope.voice_by_character == {}

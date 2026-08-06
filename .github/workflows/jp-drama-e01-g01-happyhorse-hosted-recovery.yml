@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/jp-drama-e01-g01-happyhorse-hosted-recovery.yml"
+      - "examples/jp_drama/dashscope_happyhorse_live_providers.json"
       - "src/apps/jp_drama/rendering/happyhorse11.py"
       - "src/apps/jp_drama/rendering/provider_ledger.py"
       - "src/apps/jp_drama/workflows/render_happyhorse_segment_canary.py"
@@ -23,6 +24,7 @@ env:
   PYTHONUNBUFFERED: "1"
   SOURCE_RUN_ID: "31077418519"
   CONTROL_ISSUE: "37"
+  LEGACY_NO_TASK_RUN_ID: "31078794274"
   EXPECTED_APPROVAL_DIGEST: sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e
   REQUEST_FINGERPRINT: sha256:4cc0dbce337978c8918e4ec8e93ad6d8922519cb5d81e2a92a49b93c1d311131
   PROVIDER_CONFIG: examples/jp_drama/dashscope_happyhorse_live_providers.json
@@ -39,15 +41,18 @@ jobs:
       - name: Verify hosted-recovery safety contract
         run: |
           python - <<'PY'
+          import json
           from pathlib import Path
 
-          text = Path(
+          path = Path(
               ".github/workflows/jp-drama-e01-g01-happyhorse-hosted-recovery.yml"
-          ).read_text(encoding="utf-8")
+          )
+          text = path.read_text(encoding="utf-8")
           required = [
               "RUN_E01_G01_HAPPYHORSE_HOSTED_RECOVERY_ONCE",
               'SOURCE_RUN_ID: "31077418519"',
               'CONTROL_ISSUE: "37"',
+              'LEGACY_NO_TASK_RUN_ID: "31078794274"',
               "github.event.comment.user.login == github.repository_owner",
               "github.event.issue.pull_request == null",
               "runs-on: ubuntu-latest",
@@ -57,7 +62,9 @@ jobs:
               "--max-cost-cny 6",
               "cancel-in-progress: false",
               "E01_G01_HOSTED_RENDER_RESERVATION:",
+              "E01_G01_HOSTED_RESERVATION_RELEASE:",
               "E01_G01_HOSTED_TASK_STATE:",
+              "https://dashscope.aliyuncs.com/api/v1/uploads",
               "STEP_COUNT",
               "actions/download-artifact@v4",
               "run-id:",
@@ -66,6 +73,14 @@ jobs:
           ]
           for item in required:
               assert item in text, item
+          assert "dashscope-" + "intl.aliyuncs.com" not in text
+
+          provider = json.loads(
+              Path(
+                  "examples/jp_drama/dashscope_happyhorse_live_providers.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert provider["dashscope"]["region"] == "beijing"
           PY
 
   hosted-recovery:
@@ -88,16 +103,45 @@ jobs:
         with:
           ref: main
 
-      - name: Verify provider secrets before changing the old run
+      - name: Verify Beijing provider secrets and endpoint shape
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
           DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
+          DASHSCOPE_UPLOAD_BASE_URL: ${{ secrets.DASHSCOPE_UPLOAD_BASE_URL }}
         run: |
+          set -euo pipefail
           test -n "$DASHSCOPE_API_KEY"
-          if test -z "$DASHSCOPE_BASE_URL"; then
-            test -n "$DASHSCOPE_WORKSPACE_ID"
+          if test -n "$DASHSCOPE_BASE_URL"; then
+            BASE="${DASHSCOPE_BASE_URL%/}"
+            case "$BASE" in
+              https://*.cn-beijing.maas.aliyuncs.com) ;;
+              *) exit 1 ;;
+            esac
+          else
+            case "$DASHSCOPE_WORKSPACE_ID" in
+              ws-*) ;;
+              *) exit 1 ;;
+            esac
           fi
+          if test -n "$DASHSCOPE_UPLOAD_BASE_URL"; then
+            test "${DASHSCOPE_UPLOAD_BASE_URL%/}" = "https://dashscope.aliyuncs.com"
+          fi
+
+      - name: Authenticate the Beijing key without creating a video task
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: |
+          set -euo pipefail
+          RESPONSE_FILE="$RUNNER_TEMP/dashscope-beijing-auth.json"
+          HTTP_CODE="$(curl --silent --show-error \
+            --output "$RESPONSE_FILE" \
+            --write-out '%{http_code}' \
+            --get 'https://dashscope.aliyuncs.com/api/v1/uploads' \
+            --data-urlencode 'action=getPolicy' \
+            --data-urlencode 'model=happyhorse-1.1-r2v' \
+            --header "Authorization: Bearer $DASHSCOPE_API_KEY")"
+          test "$HTTP_CODE" = "200"
 
       - name: Prove the old render executed zero steps and cancel its pending run
         env:
@@ -201,12 +245,45 @@ jobs:
           COMMENTS="$(gh api "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments?per_page=100")"
           EXISTING="$(jq -r --arg p "$PREFIX" '[.[] | select(.body | startswith($p))] | last | .body // ""' <<<"$COMMENTS")"
           EXPECTED="$PREFIX run_id=$GITHUB_RUN_ID fingerprint=$REQUEST_FINGERPRINT attempt=1"
+
           if test -z "$EXISTING"; then
             gh api --method POST \
               "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
               -f "body=$EXPECTED"
+          elif test "$EXISTING" = "$EXPECTED"; then
+            :
           else
-            test "$EXISTING" = "$EXPECTED"
+            OLD_RUN_ID="$(sed -n 's/.* run_id=\([0-9][0-9]*\) .*/\1/p' <<<"$EXISTING")"
+            OLD_FINGERPRINT="$(sed -n 's/.* fingerprint=\([^ ]*\) .*/\1/p' <<<"$EXISTING")"
+            test -n "$OLD_RUN_ID"
+            test "$OLD_FINGERPRINT" = "$REQUEST_FINGERPRINT"
+            test "$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$OLD_RUN_ID" --jq '.status')" = "completed"
+
+            TASK_PREFIX="E01_G01_HOSTED_TASK_STATE: run_id=$OLD_RUN_ID "
+            TASK_STATE="$(jq -r --arg p "$TASK_PREFIX" '[.[] | select(.body | startswith($p))] | last | .body // ""' <<<"$COMMENTS")"
+            test -n "$TASK_STATE"
+            OLD_TASK_ID="$(sed -n 's/.* task_id=\([^ ]*\) .*/\1/p' <<<"$TASK_STATE")"
+            OLD_TASK_STATUS="$(sed -n 's/.* status=\([^ ]*\) .*/\1/p' <<<"$TASK_STATE")"
+            test "$OLD_TASK_ID" = "none"
+
+            if test "$OLD_RUN_ID" = "$LEGACY_NO_TASK_RUN_ID"; then
+              RESULT_STATE="$(jq -r --arg rid "$OLD_RUN_ID" '[.[] | select((.body | startswith("E01-G01 hosted recovery result")) and (.body | contains($rid)))] | last | .body // ""' <<<"$COMMENTS")"
+              test -n "$RESULT_STATE"
+              grep -Eq -- '- render: `(failure|skipped)`' <<<"$RESULT_STATE"
+            else
+              case "$OLD_TASK_STATUS" in
+                no_ledger|no_operation) ;;
+                *) exit 1 ;;
+              esac
+            fi
+
+            RELEASE="E01_G01_HOSTED_RESERVATION_RELEASE: old_run_id=$OLD_RUN_ID fingerprint=$REQUEST_FINGERPRINT reason=no_provider_task"
+            gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+              -f "body=$RELEASE"
+            gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+              -f "body=$EXPECTED"
           fi
 
       - name: Render exactly one approved 10-second R2V task
@@ -235,35 +312,37 @@ jobs:
             --report "$STATE_DIR/render.json" \
             --print-report
 
-      - name: Persist any provider task identity to issue 37
+      - name: Persist provider task identity or explicit no-task proof to issue 37
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test -n "${STATE_DIR:-}" || exit 0
-          test -f "$STATE_DIR/ledger.json" || exit 0
           VALUES="$(python - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          ledger = json.loads(
-              (Path(os.environ["STATE_DIR"]) / "ledger.json").read_text(encoding="utf-8")
-          )
+          state = Path(os.environ["STATE_DIR"])
+          ledger_path = state / "ledger.json"
+          if not ledger_path.is_file():
+              print("none\tnone\tno_ledger")
+              raise SystemExit(0)
+          ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
           if not ledger.get("operations"):
+              print("none\tnone\tno_operation")
               raise SystemExit(0)
           operation = next(iter(ledger["operations"].values()))
-          print("\t".join([
-              operation.get("provider_task_id") or "",
-              operation.get("provider_request_id") or "none",
-              operation.get("status") or "unknown",
-          ]))
+          task_id = operation.get("provider_task_id") or "none"
+          request_id = operation.get("provider_request_id") or "none"
+          status = operation.get("status") or "unknown"
+          if task_id == "none" and status not in {"submitting", "failed", "unknown"}:
+              status = "unresolved_submission"
+          print("\t".join([task_id, request_id, status]))
           PY
           )"
-          test -n "$VALUES" || exit 0
           IFS=$'\t' read -r TASK_ID REQUEST_ID TASK_STATUS <<<"$VALUES"
-          test -n "$TASK_ID" || exit 0
           BODY="E01_G01_HOSTED_TASK_STATE: run_id=$GITHUB_RUN_ID task_id=$TASK_ID request_id=$REQUEST_ID status=$TASK_STATUS attempt=1"
           gh api --method POST \
             "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
