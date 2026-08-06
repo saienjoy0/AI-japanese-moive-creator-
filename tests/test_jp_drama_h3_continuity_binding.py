@@ -82,7 +82,8 @@ def test_binding_reuses_pr45_artifact_without_provider_call(
         output_dir=tmp_path / "output",
     )
 
-    payload = json.loads(Path(result["binding"]).read_text(encoding="utf-8"))
+    binding_path = Path(result["binding"])
+    payload = json.loads(binding_path.read_text(encoding="utf-8"))
     assert payload["source_workflow_run_id"] == "31091499445"
     assert payload["source_artifact"] == "jp-drama-E01-G01-continuity-frame"
     assert payload["source_segment_id"] == "E01-G01"
@@ -90,8 +91,12 @@ def test_binding_reuses_pr45_artifact_without_provider_call(
     assert payload["target_provider_route_id"] == "minimax/h3-reference-av"
     assert payload["reference_role"] == "storyboard"
     assert payload["send_full_previous_video"] is False
+    assert payload["requires_publication_before_h3_submit"] is True
     assert payload["external_api_calls"] == 0
-    assert Path(payload["frame_path"]).read_bytes() == b"png"
+    assert not Path(payload["frame_path"]).is_absolute()
+    assert not Path(payload["metadata_path"]).is_absolute()
+    assert (binding_path.parent / payload["frame_path"]).read_bytes() == b"png"
+    assert (binding_path.parent / payload["metadata_path"]).is_file()
     assert payload["content_digest"].startswith("sha256:")
 
 
