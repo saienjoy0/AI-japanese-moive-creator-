@@ -1,0 +1,76 @@
+{
+  "approval_digest": "sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e",
+  "approval_material": {
+    "approved_asset_bundle_digest": "sha256:be129001649176e045235189f8339ba7dbdd3e9e317ac1eb12691a70237a014c",
+    "cost_reserve_cny": "6",
+    "external_tts_calls": 0,
+    "generation_plan_digest": "sha256:067fd05845ccbce11d205e66177971251543fd57221dff13d93bbdeb892bb452",
+    "model": "happyhorse-1.1-r2v",
+    "protocol": "happyhorse-1.1-r2v-official-canary-v1",
+    "provider_route_id": "dashscope/happyhorse-1.1-r2v",
+    "provider_submission_limit": 1,
+    "purpose": "E01-G01 HappyHorse 1.1 R2V single paid-canary approval",
+    "reference_manifest_digest": "sha256:0b508c8f7ed7895c9ad79bb300e210edbe599e03c1f3c2c4d066a5766ac20a9f",
+    "references": [
+      {
+        "asset_id": "ref_char_C01_e2fa7e415c",
+        "height": 1672,
+        "order": 0,
+        "role": "character_master",
+        "sha256": "sha256:ad79e1aa803ac3ae059b3f70f1293fe6c3e01c0fb178a93991193f601628455c",
+        "subject_id": "C01",
+        "width": 941
+      },
+      {
+        "asset_id": "ref_loc_S01_e2fa7e415c",
+        "height": 1672,
+        "order": 1,
+        "role": "location_master",
+        "sha256": "sha256:143f010a5a811301e31f4f0c9f22c8c9869bb099019dae855c61d18eaf71963a",
+        "subject_id": "S01",
+        "width": 941
+      },
+      {
+        "asset_id": "ref_loc_S05_e2fa7e415c",
+        "height": 1672,
+        "order": 2,
+        "role": "location_master",
+        "sha256": "sha256:6d5928e250a0dc9e7476378a50ed83c1c393f1df61e26de95e672539250779d6",
+        "subject_id": "S05",
+        "width": 941
+      },
+      {
+        "asset_id": "ref_prop_P03_e2fa7e415c",
+        "height": 1672,
+        "order": 3,
+        "role": "prop_master",
+        "sha256": "sha256:839fc1e6520f89990b59e170600a09c5934b096365df6a1799acbeef873450cc",
+        "subject_id": "P03",
+        "width": 941
+      },
+      {
+        "asset_id": "ref_prop_P04_e2fa7e415c",
+        "height": 1672,
+        "order": 4,
+        "role": "prop_master",
+        "sha256": "sha256:677ff40bceef709f5a92a45f6fc1af83abab3c9a435f30068effca5d78961e55",
+        "subject_id": "P04",
+        "width": 941
+      }
+    ],
+    "request": {
+      "duration": 10,
+      "prompt": "Japanese live-action vertical short drama, 9:16.\nUse the ordered approved reference images exactly as follows:\n[Image 1] is the approved character identity, age, face, hair, body and costume reference for C01.\n[Image 2] is the approved location architecture, layout, period, lighting and furniture reference for S01.\n[Image 3] is the approved location architecture, layout, period, lighting and furniture reference for S05.\n[Image 4] is the approved prop identity, material, color, scale, state and count reference for P03.\n[Image 5] is the approved prop identity, material, color, scale, state and count reference for P04.\nPreserve the approved reference identities, period details, prop states, lighting, spatial layout, and screen direction.\nNarrative: 色の足りない海: C01が海の絵を塗るが本物の色を出せず筆を止める\nVisual: 写実寄りのノスタルジック映画調、1880年代の日本・横浜山手にある外国人学校、 秋の柔らかな自然光、低彩度、繊細な布と木の質感、35mmフィルム風の控えめな粒子、 縦型9:16、過度な美化を避け、映像内に文字・現代ロゴ・字幕を生成しない。 参照素材を厳密に維持: 僕, 教室, 横浜港の記憶, 未完成の海の絵, 少年の安い絵具。C01が海の絵を塗るが本物の色を出せず筆を止める。 最後はP03は未完成、C01は隣の机を見る。\nMotion: 創作の喜びからもどかしさへ変化する。小道具と人物の位置・個数を維持する。\nCamera: medium_close_up, eye_level, push_in, slow\nTiming: 0-10秒: C01が海の絵を塗るが本物の色を出せず筆を止める。感情は創作の喜びからもどかしさへ。 最後はP03は未完成、C01は隣の机を見る。\nSpoken dialogue: Use natural Japanese and synchronize the visible speaker's mouth to this dialogue exactly: 僕(inner_monologue): 海は、こんな色じゃない\nAudio: 日本語の台詞、控えめな環境音。字幕・話数・文字は後処理。\nConstraints: 成人、現代の詰襟制服、現代ロゴ、派手な装飾、年齢変化、髪型変更、衣装変更、 過度な美少年化、文字、字幕。; 現代設備、蛍光灯、プラスチック、現代文字、人物、字幕、ロゴ。; 現代船、コンテナ、現代港湾設備、読める文字、人物、字幕、ロゴ。; 写真、印刷物、完成作品、読める文字、現代船、ロゴ。; 現代パッケージ、プラスチック、鮮やかな高級絵具、読める文字、ロゴ。; 字幕、話数、ロゴ、読める文字を映像へ描かない; 人物の顔、年齢、髪型、衣装、体格を変えない; 小道具の個数、所有者、位置、状態を勝手に変えない; risk:memory_reality_transition; risk:generated_text_on_paper\nDo not add subtitles, captions, logos, watermarks, title cards, or on-screen text.",
+      "ratio": "9:16",
+      "request_fingerprint": "sha256:4cc0dbce337978c8918e4ec8e93ad6d8922519cb5d81e2a92a49b93c1d311131",
+      "resolution": "720P",
+      "seed": 653709925
+    },
+    "schema_version": "1.0.0",
+    "segment_id": "E01-G01",
+    "source_provider_route_id": "wan/i2v"
+  },
+  "preflight_external_api_calls": 0,
+  "preflight_status": "ready_for_single_paid_submission",
+  "storyboard_source_commit": "3070100f6ff25a3994a749b240f423f703cd294f"
+}
