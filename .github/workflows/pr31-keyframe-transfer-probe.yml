@@ -1,11 +1,6 @@
 name: PR31 Keyframe Transfer Probe
 
 on:
-  push:
-    branches:
-      - feature/pr31-happyhorse-multiclip-production
-    paths:
-      - .github/workflows/pr31-keyframe-transfer-probe.yml
   pull_request:
     paths:
       - .github/workflows/pr31-keyframe-transfer-probe.yml
@@ -23,19 +18,39 @@ jobs:
           python-version: "3.11"
       - name: Install Pillow
         run: python -m pip install Pillow
-      - name: Download full-resolution candidate
+      - name: Probe signed original object candidates
         env:
-          IMAGE_URL: "https://media.canva.com/v2/image-resize/format:JPG/height:1672/quality:45/uri:ifs%3A%2F%2FM%2Fa252025e-940e-4f7a-8b1e-389c9acef420/watermark:F/width:941?csig=AAAAAAAAAAAAAAAAAAAAAA2e92hGusoRwoelaco2cqLg1xTh10xHi_0PFzfUx1Id&exp=1786004326&osig=AAAAAAAAAAAAAAAAAAAAAFFh4zvIsnB37hPD3E5u25BePzqveZ-udbcveQBeJLhH&signer=media-rpc"
+          OBJECT_SIG: "AAAAAAAAAAAAAAAAAAAAAFFh4zvIsnB37hPD3E5u25BePzqveZ-udbcveQBeJLhH"
+          EXPIRY: "1786004326"
         run: |
-          curl --fail --location --silent --show-error "$IMAGE_URL" --output /tmp/frame.jpg
-          python - <<'PY'
+          set +e
+          urls=(
+            "https://media.canva.com/ifs/M/a252025e-940e-4f7a-8b1e-389c9acef420?exp=${EXPIRY}&osig=${OBJECT_SIG}&signer=media-rpc"
+            "https://media.canva.com/ifs/M/a252025e-940e-4f7a-8b1e-389c9acef420?osig=${OBJECT_SIG}&exp=${EXPIRY}&signer=media-rpc"
+            "https://media.canva.com/ifs%3A%2F%2FM%2Fa252025e-940e-4f7a-8b1e-389c9acef420?exp=${EXPIRY}&osig=${OBJECT_SIG}&signer=media-rpc"
+          )
+          found=0
+          index=0
+          for url in "${urls[@]}"; do
+            index=$((index+1))
+            code=$(curl --location --silent --show-error --output "/tmp/frame-${index}" --write-out '%{http_code}' "$url")
+            echo "candidate-${index} status=${code} bytes=$(wc -c < /tmp/frame-${index})"
+            if [ "$code" = "200" ]; then
+              python - "$index" <<'PY'
+          import sys
           from pathlib import Path
           from PIL import Image
-          import hashlib
-          path = Path('/tmp/frame.jpg')
-          with Image.open(path) as image:
-              print('dimensions', image.size)
-              assert image.size == (941, 1672)
-          digest = hashlib.sha256(path.read_bytes()).hexdigest()
-          print('sha256', digest)
+          path = Path(f'/tmp/frame-{sys.argv[1]}')
+          try:
+              with Image.open(path) as image:
+                  print('dimensions', image.size)
+                  if image.size == (941, 1672):
+                      raise SystemExit(0)
+          except Exception as exc:
+              print(type(exc).__name__, exc)
+          raise SystemExit(1)
           PY
+              if [ $? -eq 0 ]; then found=1; break; fi
+            fi
+          done
+          test "$found" = "1"
