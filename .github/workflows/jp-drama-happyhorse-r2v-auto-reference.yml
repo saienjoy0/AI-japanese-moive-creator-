@@ -3,6 +3,9 @@ name: Japanese Drama HappyHorse R2V Auto Reference
 on:
   pull_request:
     paths:
+      - "config/model_catalog/families/happyhorse.yaml"
+      - "config/model_catalog/generated/model_catalog.json"
+      - "frontend/src/generated/modelCatalog.json"
       - "src/apps/jp_drama/assets/reference_resolution.py"
       - "src/apps/jp_drama/generation/happyhorse_r2v.py"
       - "src/apps/jp_drama/production/reference_prompt.py"
@@ -21,6 +24,9 @@ on:
       - "feature/**"
       - "fix/**"
     paths:
+      - "config/model_catalog/families/happyhorse.yaml"
+      - "config/model_catalog/generated/model_catalog.json"
+      - "frontend/src/generated/modelCatalog.json"
       - "src/apps/jp_drama/assets/reference_resolution.py"
       - "src/apps/jp_drama/generation/happyhorse_r2v.py"
       - "src/apps/jp_drama/production/reference_prompt.py"
@@ -57,6 +63,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-docker.txt
           python -m pip install "pytest>=8,<9"
+
+      - name: Build and validate model catalog
+        run: |
+          python scripts/build_model_catalog.py
+          python scripts/validate_model_catalog.py
+
+      - name: Upload generated catalog artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: happyhorse-r2v-model-catalog
+          path: |
+            config/model_catalog/generated/model_catalog.json
+            frontend/src/generated/modelCatalog.json
+          if-no-files-found: error
 
       - name: Compile R2V implementation
         run: |
