@@ -39,9 +39,10 @@ _SEGMENT_DIRECTIONS: dict[str, str] = {
     "E01-G02": (
         "Directed shot progression for E01-G02: "
         "0.0-1.5s begin from the immediately previous segment's final frame, "
-        "with C01 already looking toward the adjacent desk. "
-        "1.5-4.0s reveal C02's hands and the wooden P01 paint box from the same "
-        "gaze direction, without teleporting characters or changing screen direction. "
+        "with C01 already looking screen-right toward the adjacent desk. "
+        "1.5-4.0s reveal C02's hands and the wooden P01 paint box from screen-right, "
+        "following the established gaze direction without teleporting characters or "
+        "reversing screen direction. "
         "4.0-7.0s C02 opens P01 and reveals exactly two P02 solid paint cakes, "
         "one indigo and one magenta, still inside the box. "
         "7.0-10.0s hold on C01's eyes and restrained fixation using a subtle rack "
