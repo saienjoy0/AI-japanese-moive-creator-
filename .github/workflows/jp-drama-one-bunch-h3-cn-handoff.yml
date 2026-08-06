@@ -64,6 +64,8 @@ jobs:
             examples/jp_drama/minimax_h3_cn_live_provider.json
           grep -q 'external_api_calls: Literal\[0\]' \
             src/apps/jp_drama/workflows/reuse_happyhorse_segment_for_h3.py
+          grep -q 'mkdir -p output' \
+            .github/workflows/jp-drama-one-bunch-h3-cn-handoff.yml
 
   materialize-reuse:
     if: >-
@@ -138,6 +140,7 @@ jobs:
 
       - name: Reuse E01-G01 and build the MiniMax H3 continuation handoff
         run: |
+          mkdir -p output
           python -m src.apps.jp_drama.workflows.reuse_happyhorse_segment_for_h3 \
             --generation-plan "$PLAN" \
             --input "$MP4" \
@@ -184,7 +187,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           CONCLUSION="${{ job.status }}"
-          BODY="One Bunch H3 China handoff\n\n- existing E01-G01 regenerated: \`no\`\n- source result run: \`$SUCCESS_RESULT_RUN_ID\`\n- new provider calls: \`0\`\n- status: \`$CONCLUSION\`\n- run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          BODY="One Bunch H3 China handoff
+
+          - existing E01-G01 regenerated: no
+          - source result run: $SUCCESS_RESULT_RUN_ID
+          - new provider calls: 0
+          - status: $CONCLUSION
+          - run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           gh api --method POST \
             "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
             -f "body=$BODY"
