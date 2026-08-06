@@ -56,7 +56,6 @@ jobs:
               "github.event.comment.user.login == github.repository_owner",
               "github.event.issue.pull_request == null",
               "runs-on: ubuntu-latest",
-              "environment: happyhorse-paid",
               "GITHUB_RUN_ATTEMPT",
               "--max-api-calls 1",
               "--max-cost-cny 6",
@@ -65,6 +64,7 @@ jobs:
               "E01_G01_HOSTED_RESERVATION_RELEASE:",
               "E01_G01_HOSTED_TASK_STATE:",
               "https://dashscope.aliyuncs.com/api/v1/uploads",
+              "DASHSCOPE_BASE_URL: https://ws-fflq327rfjpr3ob2.cn-beijing.maas.aliyuncs.com",
               "DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com",
               "STEP_COUNT",
               "actions/download-artifact@v4",
@@ -75,6 +75,10 @@ jobs:
           for item in required:
               assert item in text, item
           assert "dashscope-" + "intl.aliyuncs.com" not in text
+          assert "environment: happyhorse-paid" not in text
+          assert "secrets.DASHSCOPE_WORKSPACE_ID" not in text
+          assert "secrets.DASHSCOPE_BASE_URL" not in text
+          assert "secrets.DASHSCOPE_UPLOAD_BASE_URL" not in text
 
           provider = json.loads(
               Path(
@@ -94,7 +98,6 @@ jobs:
       github.event.comment.body == 'RUN_E01_G01_HAPPYHORSE_HOSTED_RECOVERY_ONCE'
     runs-on: ubuntu-latest
     timeout-minutes: 70
-    environment: happyhorse-paid
     steps:
       - name: Require the first and only workflow attempt
         run: test "$GITHUB_RUN_ATTEMPT" = "1"
@@ -104,26 +107,10 @@ jobs:
         with:
           ref: main
 
-      - name: Verify Beijing provider secrets and endpoint shape
+      - name: Require the verified repository-level Beijing API key
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
-          DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
-        run: |
-          set -euo pipefail
-          test -n "$DASHSCOPE_API_KEY"
-          if test -n "$DASHSCOPE_BASE_URL"; then
-            BASE="${DASHSCOPE_BASE_URL%/}"
-            case "$BASE" in
-              https://*.cn-beijing.maas.aliyuncs.com) ;;
-              *) exit 1 ;;
-            esac
-          else
-            case "$DASHSCOPE_WORKSPACE_ID" in
-              ws-*) ;;
-              *) exit 1 ;;
-            esac
-          fi
+        run: test -n "$DASHSCOPE_API_KEY"
 
       - name: Authenticate the Beijing key without creating a video task
         env:
@@ -288,8 +275,7 @@ jobs:
         continue-on-error: true
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
-          DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
+          DASHSCOPE_BASE_URL: https://ws-fflq327rfjpr3ob2.cn-beijing.maas.aliyuncs.com
           DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com
         run: |
           python -m src.apps.jp_drama.workflows.render_happyhorse_segment_canary \
