@@ -28,7 +28,8 @@ jobs:
           text = Path(
               ".github/workflows/jp-drama-e01-g01-happyhorse-comment-relay.yml"
           ).read_text(encoding="utf-8")
-          assert "github.event.issue.number == 34" in text
+          assert "github.event.issue.number == 37" in text
+          assert "github.event.issue.pull_request == null" in text
           assert "github.event.comment.user.login == github.repository_owner" in text
           assert "RUN_E01_G01_HAPPYHORSE_R2V_10S_ONCE" in text
           assert "CHECK_E01_G01_HAPPYHORSE_STATUS" in text
@@ -43,8 +44,8 @@ jobs:
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.action == 'created' &&
-      github.event.issue.number == 34 &&
-      github.event.issue.pull_request != null &&
+      github.event.issue.number == 37 &&
+      github.event.issue.pull_request == null &&
       github.event.comment.user.login == github.repository_owner &&
       github.event.comment.body == 'RUN_E01_G01_HAPPYHORSE_R2V_10S_ONCE'
     runs-on: ubuntu-latest
@@ -53,11 +54,11 @@ jobs:
       group: jp-drama-e01-g01-happyhorse-comment-relay
       cancel-in-progress: false
     steps:
-      - name: Verify PR 34 is merged
+      - name: Verify control issue is open
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$(gh api "/repos/$GITHUB_REPOSITORY/pulls/34" --jq '.merged')" = "true"
+          test "$(gh api "/repos/$GITHUB_REPOSITORY/issues/37" --jq '.state')" = "open"
 
       - name: Dispatch the fixed 10-second paid-canary workflow
         env:
@@ -76,8 +77,8 @@ jobs:
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.action == 'created' &&
-      github.event.issue.number == 34 &&
-      github.event.issue.pull_request != null &&
+      github.event.issue.number == 37 &&
+      github.event.issue.pull_request == null &&
       github.event.comment.user.login == github.repository_owner &&
       github.event.comment.body == 'CHECK_E01_G01_HAPPYHORSE_STATUS'
     runs-on: ubuntu-latest
@@ -98,5 +99,5 @@ jobs:
           CREATED_AT="$(jq -r '.created_at' <<<"$RUN_JSON")"
           BODY=$(printf 'E01-G01 HappyHorse R2V status\n\n- run: #%s\n- run_id: `%s`\n- status: `%s`\n- conclusion: `%s`\n- created_at: `%s`\n- URL: %s' "$RUN_NUMBER" "$RUN_ID" "$STATUS" "$CONCLUSION" "$CREATED_AT" "$URL")
           gh api --method POST \
-            "/repos/$GITHUB_REPOSITORY/issues/34/comments" \
+            "/repos/$GITHUB_REPOSITORY/issues/37/comments" \
             -f "body=$BODY"
