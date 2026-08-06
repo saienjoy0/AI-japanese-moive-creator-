@@ -192,11 +192,18 @@ def add_native_voice_warning(
     )
 
 
-def build_happyhorse_prompt(bundle: PromptBundle) -> str:
-    parts = [
+def build_happyhorse_prompt(
+    bundle: PromptBundle,
+    *,
+    reference_context: str | None = None,
+) -> str:
+    opening = reference_context or (
         "Japanese live-action vertical short drama. Preserve the approved first "
         "frame's faces, ages, hairstyles, costumes, body proportions, background, "
-        "props, lighting, and screen direction.",
+        "props, lighting, and screen direction."
+    )
+    parts = [
+        opening,
         f"Narrative: {bundle.narrative_summary}",
         f"Visual: {bundle.visual_prompt}",
         f"Motion: {bundle.motion_prompt}",
@@ -243,7 +250,15 @@ def build_happyhorse_reference_prompt(
             f"[Image {number}] is the approved {role_descriptions[reference.role]} "
             f"reference for {reference.subject_id}."
         )
-    lines.append(build_happyhorse_prompt(bundle))
+    lines.append(
+        build_happyhorse_prompt(
+            bundle,
+            reference_context=(
+                "Preserve the approved reference identities, period details, "
+                "prop states, lighting, spatial layout, and screen direction."
+            ),
+        )
+    )
     prompt = "\n".join(lines)
     expected = {f"[Image {number}]" for number in range(1, len(manifest.references) + 1)}
     actual = {token for token in expected if token in prompt}
