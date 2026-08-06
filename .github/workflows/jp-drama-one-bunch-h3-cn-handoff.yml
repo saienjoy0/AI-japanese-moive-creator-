@@ -1,0 +1,190 @@
+name: Japanese Drama One Bunch H3 China Handoff
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/jp-drama-one-bunch-h3-cn-handoff.yml"
+      - "examples/jp_drama/minimax_h3_cn_live_provider.json"
+      - "src/apps/jp_drama/workflows/reuse_happyhorse_segment_for_h3.py"
+      - "tests/test_jp_drama_h3_cn_reuse_handoff.py"
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: jp-drama-one-bunch-h3-cn-handoff
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  CONTROL_ISSUE: "37"
+  SOURCE_APPROVAL_RUN_ID: "31077418519"
+  SUCCESS_RESULT_RUN_ID: "31085709337"
+  SOURCE_APPROVAL_ARTIFACT: happyhorse-e01-g01-r2v-paid-approval
+  SUCCESS_RESULT_ARTIFACT: happyhorse-e01-g01-r2v-10s-hosted-result
+
+jobs:
+  contract-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<10"
+
+      - name: Compile the handoff path
+        run: |
+          python -m compileall -q \
+            src/apps/jp_drama/workflows/reuse_happyhorse_segment_for_h3.py
+
+      - name: Test the China profile and no-resubmit contract
+        run: |
+          python -m pytest -q tests/test_jp_drama_h3_cn_reuse_handoff.py
+
+      - name: Prove normal CI has no provider credentials
+        run: |
+          test -z "${MINIMAX_API_KEY:-}"
+          test -z "${DASHSCOPE_API_KEY:-}"
+          grep -q '"base_url": "https://api.minimaxi.com"' \
+            examples/jp_drama/minimax_h3_cn_live_provider.json
+          grep -q 'external_api_calls: Literal\[0\]' \
+            src/apps/jp_drama/workflows/reuse_happyhorse_segment_for_h3.py
+
+  materialize-reuse:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.issue.number == 37 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == 'BUILD_ONE_BUNCH_H3_CN_HANDOFF'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Require first workflow attempt
+        run: test "$GITHUB_RUN_ATTEMPT" = "1"
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+
+      - name: Download the sealed generation plan and approval
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_APPROVAL_ARTIFACT }}
+          path: input/sealed
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_APPROVAL_RUN_ID }}
+
+      - name: Download the already successful ten-second clip
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SUCCESS_RESULT_ARTIFACT }}
+          path: input/result
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SUCCESS_RESULT_RUN_ID }}
+
+      - name: Locate immutable inputs
+        run: |
+          set -euo pipefail
+          PLAN="$(find input/sealed -type f -path '*/input/generation_plan_episode.json' -print -quit)"
+          APPROVAL="$(find input/sealed -type f -name 'approval.json' -print -quit)"
+          MP4="$(find input/result -type f -name '*.mp4' -print -quit)"
+          REPORT="$(find input/result -type f -name 'render.json' -print -quit)"
+          LEDGER="$(find input/result -type f -name 'ledger.json' -print -quit)"
+          test -n "$PLAN" && test -s "$PLAN"
+          test -n "$APPROVAL" && test -s "$APPROVAL"
+          test -n "$MP4" && test -s "$MP4"
+          test -n "$REPORT" && test -s "$REPORT"
+          test -n "$LEDGER" && test -s "$LEDGER"
+          {
+            echo "PLAN=$PLAN"
+            echo "APPROVAL=$APPROVAL"
+            echo "MP4=$MP4"
+            echo "REPORT=$REPORT"
+            echo "LEDGER=$LEDGER"
+          } >> "$GITHUB_ENV"
+
+      - name: Reuse E01-G01 and build the MiniMax H3 continuation handoff
+        run: |
+          python -m src.apps.jp_drama.workflows.reuse_happyhorse_segment_for_h3 \
+            --generation-plan "$PLAN" \
+            --input "$MP4" \
+            --provider-report "$REPORT" \
+            --provider-ledger "$LEDGER" \
+            --provider-approval "$APPROVAL" \
+            --approved-by "$GITHUB_REPOSITORY_OWNER" \
+            --output-dir output/one-bunch-h3-cn-handoff \
+            --print-report | tee output/handoff-report.json
+
+      - name: Prove no video provider was called
+        run: |
+          test -z "${MINIMAX_API_KEY:-}"
+          test -z "${DASHSCOPE_API_KEY:-}"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          handoff = json.loads(
+              Path(
+                  "output/one-bunch-h3-cn-handoff/minimax_h3_cn_continuation_handoff.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert handoff["reused_segment_id"] == "E01-G01"
+          assert "E01-G01" not in handoff["remaining_segment_ids"]
+          assert handoff["target_provider_route_id"] == "minimax/h3-reference-av"
+          assert handoff["provider_config"] == (
+              "examples/jp_drama/minimax_h3_cn_live_provider.json"
+          )
+          assert handoff["external_api_calls"] == 0
+          PY
+
+      - name: Upload the reusable segment and H3 continuation handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-bunch-h3-cn-continuation-handoff
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Report the zero-call handoff to issue 37
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONCLUSION="${{ job.status }}"
+          BODY="One Bunch H3 China handoff\n\n- existing E01-G01 regenerated: \`no\`\n- source result run: \`$SUCCESS_RESULT_RUN_ID\`\n- new provider calls: \`0\`\n- status: \`$CONCLUSION\`\n- run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST \
+            "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+            -f "body=$BODY"
