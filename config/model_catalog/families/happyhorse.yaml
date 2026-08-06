@@ -86,6 +86,9 @@ models:
           resolution:
             options: [720p, 1080p]
             default: 1080p
+          ratio:
+            options: ["9:16", "16:9", "1:1", "4:3", "3:4"]
+            default: "9:16"
           seed: true
           negativePrompt: true
           promptExtend: true
