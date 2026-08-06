@@ -71,6 +71,9 @@ def test_normal_spoken_dialogue_keeps_existing_lip_sync_instruction() -> None:
 def test_g2_direction_prevents_early_theft_and_pins_two_paints() -> None:
     prompt = append_segment_direction("base", segment_id="E01-G02")
 
+    assert "looking screen-right" in prompt
+    assert "from screen-right" in prompt
+    assert "reversing screen direction" in prompt
     assert "exactly two P02 solid paint cakes" in prompt
     assert "one indigo and one magenta" in prompt
     assert "P02 remains inside P01" in prompt
