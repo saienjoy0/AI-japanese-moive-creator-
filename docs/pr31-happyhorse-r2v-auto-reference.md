@@ -1,146 +1,216 @@
-# PR31: HappyHorse 1.1 R2V Auto Reference Canary
+# PR31 最小設計: 既存HappyHorse R2V経路を1.1へ接続する
 
-## Purpose
+## 結論
 
-Add a minimal, approval-gated HappyHorse 1.1 R2V execution route for the
-Japanese-drama pipeline without making additional first-frame keyframes.
+大規模な日本語短劇専用R2V基盤は作らない。
 
-The route reuses the existing:
+現在のmainには、すでに次が存在する。
 
-- `PreparedEpisode` and `GenerationPlanEpisode` contracts;
-- approved `AssetBundle` master images;
-- provider task ledger and immediate task-ID persistence;
-- restart-safe polling and download;
-- MP4 validation and later `SegmentArtifact` import.
+- Storyboard R2V画面
+- `VideoTask.generation_mode = "r2v"`
+- `VideoTask.reference_image_urls`
+- 人物・場所・小道具の選択と保存
+- `ComicGenPipeline.process_video_task()`
+- `WanxModel`
+- 複数参照画像の`resolve_media_inputs()`
+- HappyHorse共通HTTP送信`_generate_hh_http()`
+- provider task ID / request IDの即時保存
+- poll、download、動画タスクの永続化
+- HappyHorse 1.1 R2Vのモデルカタログ登録
 
-The first production target is `E01-G01` from 『一房の葡萄』.
+不足しているのは、`WanxModel.generate()`のHappyHorse分岐が
+`happyhorse-1.0-*`だけを対象にしており、モデルカタログが返す
+`happyhorse-1.1-r2v`を既存処理へ通していない点である。
 
-## Flow
+---
+
+# 4人の判断
+
+## 1. 生成経路担当
+
+既存経路をそのまま使う。
 
 ```text
-approved source plan + approved asset bundle
-  -> derive HappyHorse R2V plan and bundle
-  -> select ordered C/S/P references from reference_asset_ids
-  -> verify approval, local bytes, SHA-256, PNG dimensions, count <= 9
-  -> build [Image N]-bound prompt
-  -> bind model/region/endpoint/price/ratio/prompt/assets into approval digest
-  -> preflight with zero provider calls
-  -> explicit render approval
-  -> publish temporary provider media references
-  -> submit at most one paid task
-  -> save task ID before polling
-  -> poll/resume/download
-  -> validate vertical MP4, duration, audio strategy and black frames
+StoryboardFrame / VideoTask
+  -> reference_image_urls
+  -> ComicGenPipeline.process_video_task()
+  -> WanxModel.generate()
+  -> _generate_hh_http()
+  -> DashScope task
+  -> MP4
 ```
 
-## Added modules
+新しいGenerationPlan、AssetBundle、Canary workflowは追加しない。
 
-### `assets/reference_resolution.py`
+## 2. 参照画像担当
 
-Separates stable selection evidence from temporary provider URLs.
+既存UIと`VideoTask.reference_image_urls`を正とする。
 
-- `ReferenceSelectionManifest` is the approval-bound, immutable selection.
-- `PublishedReferenceManifest` contains runtime URLs and an operational lease.
-- references are taken deterministically from `GenerationSegment.reference_asset_ids`;
-- duplicate IDs, duplicate SHA values, missing files, modified files and more
-  than nine references fail closed;
-- native audio does not require a fixed voice ID;
-- external TTS requires an approved `VoiceIdentityProfile`.
+- R2V画面で選択された人物・場所・小道具画像を利用する
+- 既存の`resolve_media_inputs()`でローカル画像やURLをprovider入力へ変換する
+- HappyHorseの上限9枚は送信前に検査する
+- `[Image 1]`などの番号は配列順に対応させる
 
-### `generation/happyhorse_r2v.py`
+新しいReference Manifestや画像検索層は作らない。
 
-Derives a provider-specific R2V plan and bundle from an existing approved plan.
-It removes first-frame requirements, preserves character/location/prop order,
-binds the route to `dashscope/happyhorse-1.1-r2v`, records one priced video task
-per segment, and leaves the original plan unchanged.
+## 3. Provider担当
 
-### `production/reference_prompt.py`
+`src/models/wanx.py`だけを最小変更する。
 
-Builds generic R2V prompts with contiguous `[Image 1] ... [Image N]` bindings.
-The generic builder uses editorial shots; a separate creative override may
-supply a more detailed timeline without embedding title-specific logic in code.
+現在:
 
-### `rendering/happyhorse11.py`
-
-Introduces `HappyHorse11AsyncTransport` shared by separate exact I2V and R2V
-contracts. R2V accepts one to nine ordered images and explicitly sends
-`ratio=9:16`. Existing I2V remains first-frame-only and is covered by regression
-tests.
-
-### `rendering/happyhorse_r2v_contract.py`
-
-The approval manifest binds:
-
-- model and route;
-- plan, bundle, selection and prompt digests;
-- ordered asset IDs and SHA-256 values;
-- region, endpoint origin and workspace hashes;
-- resolution, `ratio=9:16`, duration, seed and watermark;
-- audio strategy;
-- price snapshot and quoted CNY cost;
-- exactly one billable provider task.
-
-Temporary URLs and credentials are deliberately excluded from this digest.
-
-### `workflows/render_happyhorse_r2v_segment_canary.py`
-
-Stages:
-
-- `preflight`: validates and writes the exact approval manifest; provider calls = 0.
-- `render`: requires the exact approval digest and can create at most one task.
-- `resume`: uses only a stored provider task ID and never creates another task.
-
-A non-succeeded task older than the 23-hour guard becomes
-`expired_unrecoverable`. The workflow never retries or resubmits automatically.
-
-## E01-G01 contract
-
-`assets/jp_drama/one_bunch_of_grapes/creative_overrides/E01-G01.r2v.json`
-retains the approved ten-second structure:
-
-1. 0.0–2.0s: unfinished muddy harbor painting;
-2. 2.0–4.0s: vivid Yokohama harbor memory;
-3. 4.0–6.5s: cheap colors become muddy gray;
-4. 6.5–10.0s: the boy becomes disappointed and looks to the next desk.
-
-The source GenerationPlan must explicitly include `S05`. The resolver does not
-contain an `E01-G01` hard-coded asset insertion.
-
-## Safety properties
-
-- no paid provider call in normal CI;
-- no first-frame requirement for R2V;
-- no automatic reference pruning;
-- no duplicate media selection;
-- no approval reuse after prompt, asset, endpoint, region or price changes;
-- no second POST after a task ID is known;
-- no automatic retry after ambiguous failure or task expiry;
-- output must be close to vertical 9:16 and pass duration/audio/black-frame checks.
-
-## Tests
-
-Focused CI runs:
-
-```bash
-python -m pytest -q \
-  tests/test_jp_drama_happyhorse_official_canary.py \
-  tests/test_jp_drama_happyhorse11_r2v.py \
-  tests/test_jp_drama_happyhorse_r2v_contracts.py
+```python
+elif final_model_name.startswith("happyhorse-1.0-"):
 ```
 
-It also rebuilds and validates the canonical model catalog, uploads generated
-backend/frontend catalog artifacts, compiles all new modules, validates the
-committed E01-G01 override, and asserts that provider credentials are absent.
+修正後:
 
-## Not included
+```python
+elif final_model_name.startswith(("happyhorse-1.0-", "happyhorse-1.1-")):
+```
 
-- paid E01-G01 generation;
-- automatic voice casting;
-- full 15-segment execution;
-- automatic fallback or retry;
-- automatic two/four-way segmentation;
-- automatic extra keyframe creation;
-- PR creation or merge.
+I2V判定:
 
-The next production action after CI and review is a separately authorized,
-one-task E01-G01 paid canary.
+```python
+if final_model_name in {
+    "happyhorse-1.0-i2v",
+    "happyhorse-1.1-i2v",
+}:
+```
+
+R2V判定:
+
+```python
+elif final_model_name in {
+    "happyhorse-1.0-r2v",
+    "happyhorse-1.1-r2v",
+}:
+```
+
+R2Vでは既存処理を再利用する。
+
+```python
+resolved_refs = resolve_media_inputs(...)
+media = [
+    {"type": "reference_image", "url": item.value}
+    for item in resolved_refs
+]
+video_url = self._generate_hh_http(...)
+```
+
+`_generate_hh_http()`、task作成、provider ID保存、poll、downloadは変更しない。
+
+## 4. 回帰・保守担当
+
+新しい本番基盤は増やさず、Focused testだけを追加する。
+
+必須確認:
+
+1. `happyhorse-1.1-r2v`がHappyHorse分岐へ入る
+2. 参照画像が`reference_image`のmedia配列になる
+3. 画像順序が維持される
+4. 画像0枚を拒否する
+5. 画像10枚以上を拒否する
+6. `ratio="9:16"`が既存HTTP payloadへ渡る
+7. task ID / request ID callbackが維持される
+8. `happyhorse-1.0-r2v`を壊さない
+9. `happyhorse-1.1-i2v`を壊さない
+
+---
+
+# 実装対象
+
+原則2ファイルだけにする。
+
+```text
+src/models/wanx.py
+tests/test_happyhorse_11_r2v_routing.py
+```
+
+縦動画の既定値をモデル選択時に保証できないことがテストで判明した場合だけ、
+次の3ファイル目を変更する。
+
+```text
+config/model_catalog/families/happyhorse.yaml
+```
+
+その場合の追加はR2Vの`ratio`既定値だけである。
+
+```yaml
+ratio:
+  options: ["9:16", "16:9", "1:1", "4:3", "3:4"]
+  default: "9:16"
+```
+
+---
+
+# 変更しないもの
+
+- `src/apps/jp_drama/**`
+- PreparedEpisode
+- GenerationPlanEpisode
+- ApprovedAssetBundle
+- WanMasterReferenceManifest
+- H3 publication
+- provider ledger
+- SegmentArtifact
+- episode composer
+- 音声自動キャスト
+- 全15セグメントdispatcher
+- 自動fallback
+- 自動retry
+- 追加キーフレーム生成
+
+---
+
+# 受入条件
+
+## コード
+
+- 変更は2ファイル、必要時のみ3ファイル
+- 実装差分はおおむね50行以内
+- テストを含めても150行前後
+- 新しいクラスやManifestを追加しない
+- 既存`_generate_hh_http()`を使用する
+
+## 動作
+
+```text
+happyhorse-1.1-r2v
++ reference_image_urls 1〜9枚
++ prompt
++ ratio=9:16
++ duration 3〜15秒
+  -> 既存HappyHorse HTTP payload
+  -> task ID保存
+  -> poll
+  -> MP4保存
+```
+
+## 最初の実確認
+
+最小修正をmainへ入れた後、既存Storyboard R2V画面からE01-G01を1回だけ生成する。
+
+- 17枚を全部送らない
+- そのショットに必要な参照だけ選択する
+- 追加キーフレームなし
+- HappyHorse taskは1回
+- 結果が悪い場合だけ次の設計を考える
+
+---
+
+# 削除した旧案
+
+旧PR31で追加した次の専用実装は不要なため削除した。
+
+- 専用Reference Resolver
+- 派生HappyHorse GenerationPlan
+- 汎用R2V Prompt Bundle
+- 専用Approval Manifest
+- 専用R2V Canary workflow
+- 専用GitHub Actions
+- E01-G01専用creative override
+- 大規模contract tests
+- `HappyHorse11I2VModel`の共通Transport化
+
+このPR31は、既存経路の小さな接続修正だけに作り直す。
