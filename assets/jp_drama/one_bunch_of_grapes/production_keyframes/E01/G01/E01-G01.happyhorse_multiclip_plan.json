@@ -1,0 +1,202 @@
+{
+  "assembly": {
+    "audio_channels": 2,
+    "audio_codec": "aac",
+    "audio_sample_rate": 48000,
+    "clip_order": [
+      "E01-G01-A",
+      "E01-G01-B",
+      "E01-G01-C",
+      "E01-G01-D"
+    ],
+    "transition_style": [
+      "hard_cut",
+      "memory_flash_cut",
+      "hard_cut"
+    ],
+    "video_codec": "libx264"
+  },
+  "clips": [
+    {
+      "approval_status": "approved",
+      "approved_at": "2026-08-06T10:49:00+09:00",
+      "approved_by": "saienjoy0",
+      "audio_prompt": "Quiet brush-on-paper sound and restrained classroom room tone. No speech.",
+      "camera_prompt": "Macro close-up, eye-level to the desk, extremely slow push-in.",
+      "clip_id": "E01-G01-A",
+      "final_duration_seconds": 2.0,
+      "first_frame_path": "assets/jp_drama/one_bunch_of_grapes/production_keyframes/E01/G01/E01-G01-A_unfinished_painting.svg",
+      "first_frame_sha256": "sha256:00e7cfdab7b134bc2f057c7ac0f976f01ad3b9737eb15befa06e3f885cfd3556",
+      "generated_by": "openai/image-generation",
+      "height": 533,
+      "mime_type": "image/jpeg",
+      "motion_prompt": "Close-up of the unfinished Yokohama harbor watercolor. The wet brush makes one short stroke in muddy blue-gray and then stops. Very slow cinematic push-in. Keep the paper, ships, paint box and desk stable. No hands morphing, no new objects, no text.",
+      "negative_constraints": [
+        "identity drift",
+        "modern objects",
+        "extra people",
+        "malformed hands",
+        "changing props",
+        "text",
+        "subtitles",
+        "logos",
+        "watermarks"
+      ],
+      "operation_id": "openai-image:58b0435a-00a8-4245-b0ac-b8d9e625847b",
+      "provider_request_duration_seconds": 3,
+      "reference_asset_ids": [
+        "P03",
+        "P04",
+        "S01"
+      ],
+      "requires_audio_stream": true,
+      "timeline_end_seconds": 2.0,
+      "timeline_start_seconds": 0.0,
+      "trim_after_generation": true,
+      "visual_prompt": "明治期の教室の古い木机。未完成の横浜港水彩画、濁った青灰色、使い古した安い絵具箱。",
+      "width": 300
+    },
+    {
+      "approval_status": "approved",
+      "approved_at": "2026-08-06T10:49:00+09:00",
+      "approved_by": "saienjoy0",
+      "audio_prompt": "Distant ship horn, water and light harbor ambience. No speech.",
+      "camera_prompt": "Slow floating push across the harbor with subtle memory haze.",
+      "clip_id": "E01-G01-B",
+      "final_duration_seconds": 2.0,
+      "first_frame_path": "assets/jp_drama/one_bunch_of_grapes/production_keyframes/E01/G01/E01-G01-B_harbor_memory.svg",
+      "first_frame_sha256": "sha256:79173fb487cabfdf29e88a8f279e734df0c00516f2537744189f77da0a815bbd",
+      "generated_by": "openai/image-generation",
+      "height": 533,
+      "mime_type": "image/jpeg",
+      "motion_prompt": "A vivid remembered Yokohama harbor. Gentle waves shimmer, white sails move slightly, and warm light glints on the magenta-red waterline. Dreamlike but photoreal. No camera shake, no modern vessels, no people appearing, no text.",
+      "negative_constraints": [
+        "identity drift",
+        "modern objects",
+        "extra people",
+        "malformed hands",
+        "changing props",
+        "text",
+        "subtitles",
+        "logos",
+        "watermarks"
+      ],
+      "operation_id": "openai-image:51111c06-3780-4e89-8543-6cddf05d4ffd",
+      "provider_request_duration_seconds": 3,
+      "reference_asset_ids": [
+        "S05"
+      ],
+      "requires_audio_stream": true,
+      "timeline_end_seconds": 4.0,
+      "timeline_start_seconds": 2.0,
+      "trim_after_generation": true,
+      "visual_prompt": "少年の記憶の中の明治期横浜港。真青な海、白い帆船、洋紅色にきらめく水際。",
+      "width": 300
+    },
+    {
+      "approval_status": "approved",
+      "approved_at": "2026-08-06T10:49:00+09:00",
+      "approved_by": "saienjoy0",
+      "audio_prompt": "Small brush and metal paint-box sounds with quiet classroom ambience. No speech.",
+      "camera_prompt": "Medium close shot, desk and hands dominant, subtle stationary camera.",
+      "clip_id": "E01-G01-C",
+      "final_duration_seconds": 2.5,
+      "first_frame_path": "assets/jp_drama/one_bunch_of_grapes/production_keyframes/E01/G01/E01-G01-C_muddy_colors.svg",
+      "first_frame_sha256": "sha256:94630d43b9875204bb661c20905d4e4e84ceb16ab26bce6e47828b3504795f6f",
+      "generated_by": "openai/image-generation",
+      "height": 533,
+      "mime_type": "image/jpeg",
+      "motion_prompt": "The boy slowly mixes cheap blue and red watercolor with the brush. The mixture becomes muddy gray. His hands make only small natural movements; his face remains the same child and his expression becomes quietly frustrated. Preserve costume, desk, painting and classroom continuity. No speech or lip movement.",
+      "negative_constraints": [
+        "identity drift",
+        "modern objects",
+        "extra people",
+        "malformed hands",
+        "changing props",
+        "text",
+        "subtitles",
+        "logos",
+        "watermarks"
+      ],
+      "operation_id": "openai-image:828451fb-dfc7-4495-b894-c862ced3167d",
+      "provider_request_duration_seconds": 3,
+      "reference_asset_ids": [
+        "C01",
+        "S01",
+        "P03",
+        "P04"
+      ],
+      "requires_audio_stream": true,
+      "timeline_end_seconds": 6.5,
+      "timeline_start_seconds": 4.0,
+      "trim_after_generation": true,
+      "visual_prompt": "同じ日本人少年、同じ制服、同じ教室と机。安い青と赤の水彩絵具、未完成の港の絵。",
+      "width": 300
+    },
+    {
+      "approval_status": "approved",
+      "approved_at": "2026-08-06T10:49:00+09:00",
+      "approved_by": "saienjoy0",
+      "audio_prompt": "Quiet classroom ambience. The internal monologue is added after the four clips are joined.",
+      "camera_prompt": "Medium shot with an almost imperceptible push-in; finish on the sideways glance.",
+      "clip_id": "E01-G01-D",
+      "dialogue_prompt": "内心独白：「海は、こんな色じゃない」",
+      "final_duration_seconds": 3.5,
+      "first_frame_path": "assets/jp_drama/one_bunch_of_grapes/production_keyframes/E01/G01/E01-G01-D_boy_looks_right.svg",
+      "first_frame_sha256": "sha256:e01aab95be91c0434c194d6f034fc1d61d60b322356ed657168a0d2fc03d074b",
+      "generated_by": "openai/image-generation",
+      "height": 533,
+      "mime_type": "image/jpeg",
+      "motion_prompt": "The boy stops painting and studies the unfinished harbor picture with disappointment. After a quiet pause, only his eyes and then his head turn slightly toward the neighboring desk. Keep his identity, age, uniform, painting, paint box, desk and lighting unchanged. No visible speaking and no exaggerated movement.",
+      "negative_constraints": [
+        "identity drift",
+        "modern objects",
+        "extra people",
+        "malformed hands",
+        "changing props",
+        "text",
+        "subtitles",
+        "logos",
+        "watermarks"
+      ],
+      "operation_id": "openai-image:d75aa134-d570-4add-bed2-7ab8bb2698dd",
+      "provider_request_duration_seconds": 4,
+      "reference_asset_ids": [
+        "C01",
+        "S01",
+        "P03",
+        "P04"
+      ],
+      "requires_audio_stream": true,
+      "timeline_end_seconds": 10.0,
+      "timeline_start_seconds": 6.5,
+      "trim_after_generation": true,
+      "visual_prompt": "同じ日本人少年、同じ制服、同じ教室。机上の未完成の港の絵と安い絵具箱。",
+      "width": 300
+    }
+  ],
+  "content_digest": "sha256:cdb3fe1a032af3c58be899c2caac58b62ecf7aeb65911fa0ca104df78f22f34e",
+  "episode_id": "E01",
+  "master_approval_id": "one-bunch-master-references-v1-human-approval",
+  "master_approval_manifest_path": "assets/jp_drama/one_bunch_of_grapes/master_references/v1/human_approval.json",
+  "output": {
+    "aspect_ratio": "9:16",
+    "duration_seconds": 10.0,
+    "estimated_output_frames": 240,
+    "fps": 24,
+    "resolution": "720P"
+  },
+  "production_mode": "happyhorse_multi_clip_i2v",
+  "project_id": "one-bunch-of-grapes",
+  "schema_version": "1.0.0",
+  "source_segment_id": "E01-G01",
+  "source_storyboard": {
+    "audio": [
+      "紙を擦る小さな筆音",
+      "短い港の記憶に遠い汽笛",
+      "静かな教室の環境音"
+    ],
+    "dialogue": "海は、こんな色じゃない"
+  },
+  "title": "色の足りない海"
+}
