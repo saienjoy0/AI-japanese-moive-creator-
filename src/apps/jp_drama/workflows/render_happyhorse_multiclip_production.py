@@ -83,6 +83,12 @@ def _paths(output_dir: Path, source_segment_id: str) -> tuple[Path, Path, Path]:
     return raw, ledger, final
 
 
+def _clip_ledger_path(base: Path, clip_id: str) -> Path:
+    suffix = base.suffix or ".json"
+    stem = base.name[: -len(base.suffix)] if base.suffix else base.name
+    return base.parent / f"{stem}.{clip_id}{suffix}"
+
+
 def _render(
     *,
     plan,
@@ -90,27 +96,32 @@ def _render(
     preflight: dict[str, Any],
     output_dir: Path,
     ledger_file: Path,
-    max_api_calls: int,
-    max_cost_cny: Decimal,
     reserve_each: Decimal,
     repository_root: Path,
 ) -> dict[str, Any]:
     config.require_environment()
     raw_dir = output_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    store = CanaryProviderLedgerStore(ledger_file)
-    ledger = store.load_or_create(
-        source_digest=plan.content_digest,
-        shot_id=plan.source_segment_id,
-        max_api_calls=max_api_calls,
-        max_cost_cny=max_cost_cny,
-    )
     results: list[dict[str, Any]] = []
     submissions = 0
+    ledger_files: list[str] = []
 
+    # The existing Canary ledger intentionally caps a single ledger at three calls.
+    # Production therefore uses one immutable one-call ledger per visual clip rather
+    # than weakening the Canary safety ceiling globally. The preflight still fixes
+    # the aggregate four-call and total-cost budget before any provider submission.
     for clip, request in zip(plan.clips, preflight["requests"], strict=True):
         operation_id = request["operation_id"]
         output = raw_dir / f"{clip.clip_id}.mp4"
+        clip_ledger_file = _clip_ledger_path(ledger_file, clip.clip_id)
+        ledger_files.append(str(clip_ledger_file))
+        store = CanaryProviderLedgerStore(clip_ledger_file)
+        ledger = store.load_or_create(
+            source_digest=plan.content_digest,
+            shot_id=clip.clip_id,
+            max_api_calls=1,
+            max_cost_cny=reserve_each,
+        )
         record, created = store.begin(
             ledger,
             operation_id=operation_id,
@@ -133,6 +144,7 @@ def _render(
                         "output_sha256": digest,
                         "provider_task_id": record.provider_task_id,
                         "audio_stream_present": media_has_audio(output),
+                        "ledger_file": str(clip_ledger_file),
                     }
                 )
                 continue
@@ -153,9 +165,9 @@ def _render(
         )
         model.configure_operation(
             resume_task_id=None if created else record.provider_task_id,
-            on_task_submitted=lambda task_id, request_id, op=operation_id: (
-                store.mark_submitted(
-                    ledger,
+            on_task_submitted=lambda task_id, request_id, op=operation_id, s=store, l=ledger: (
+                s.mark_submitted(
+                    l,
                     op,
                     provider_task_id=task_id,
                     provider_request_id=request_id,
@@ -212,6 +224,7 @@ def _render(
                 "provider_task_id": ledger.operations[operation_id].provider_task_id,
                 "provider_request_id": ledger.operations[operation_id].provider_request_id,
                 "audio_stream_present": audio_present,
+                "ledger_file": str(clip_ledger_file),
             }
         )
     return {
@@ -220,7 +233,7 @@ def _render(
         "clips": results,
         "provider_submissions_this_run": submissions,
         "external_api_calls": submissions,
-        "ledger_file": str(ledger_file),
+        "ledger_files": ledger_files,
     }
 
 
@@ -293,8 +306,6 @@ def main(argv: list[str] | None = None) -> int:
                 preflight=preflight,
                 output_dir=output_dir,
                 ledger_file=ledger_file,
-                max_api_calls=args.max_api_calls,
-                max_cost_cny=args.max_cost_cny,
                 reserve_each=args.cost_reserve_cny_per_clip,
                 repository_root=repository_root,
             )
