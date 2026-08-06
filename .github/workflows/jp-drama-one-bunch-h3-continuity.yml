@@ -40,8 +40,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install focused test dependency
-        run: python -m pip install "pytest>=8,<10"
+      - name: Install focused test dependencies
+        run: python -m pip install "pytest>=8,<10" "pydantic>=2,<3"
 
       - name: Compile continuity builder
         run: |
@@ -179,13 +179,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           CONCLUSION="${{ job.status }}"
-          printf -v BODY '%s\n\n%s\n%s\n%s\n%s\n%s' \
+          printf -v BODY '%s\n\n%s\n%s\n%s\n%s\n%s\n%s' \
             'One Bunch H3 continuity preparation' \
             '- E01-G01 used as continuity reference: yes' \
             '- E01-G01 regenerated: no' \
             '- full E01-G01 video sent to H3: no' \
             '- new provider calls: 0' \
-            "- status: $CONCLUSION\n- run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            "- status: $CONCLUSION" \
+            "- run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           gh api --method POST \
             "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
             -f "body=$BODY"
