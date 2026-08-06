@@ -1,4 +1,4 @@
-"""Run the existing HappyHorse R2V Canary with one prior-segment end frame."""
+"""Run HappyHorse R2V with automatic prior-frame handoff and end-frame capture."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ from typing import Any, Iterator
 from ..rendering.ffmpeg import file_sha256
 from ..rendering.happyhorse11 import require_local_first_frame
 from . import render_happyhorse_segment_canary as base
-from .extract_segment_end_frame import SCHEMA_VERSION
+from .extract_segment_end_frame import SCHEMA_VERSION, extract_segment_end_frame
+from .segment_id import previous_segment_id
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,13 @@ def build_continuity_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--continuity-frame")
     parser.add_argument("--continuity-frame-metadata")
+    parser.add_argument(
+        "--continuity-dir",
+        help=(
+            "Shared directory containing <segment>/<segment>_end.png and JSON. "
+            "Defaults to a continuity directory beside --output."
+        ),
+    )
     return parser
 
 
@@ -52,6 +60,51 @@ def _option_value(arguments: list[str], option: str, default: str | None = None)
     if index + 1 >= len(arguments):
         raise ContinuityFrameError(f"{option} requires a value")
     return arguments[index + 1]
+
+
+def _default_continuity_dir(arguments: list[str]) -> Path | None:
+    output = _option_value(arguments, "--output")
+    if not output:
+        return None
+    return Path(output).resolve().parent / "continuity"
+
+
+def _continuity_candidates(
+    continuity_dir: str | Path,
+    source_segment_id: str,
+) -> list[tuple[Path, Path]]:
+    root = Path(continuity_dir).resolve()
+    filename = f"{source_segment_id}_end"
+    return [
+        (
+            root / source_segment_id / f"{filename}.png",
+            root / source_segment_id / f"{filename}.json",
+        ),
+        (root / f"{filename}.png", root / f"{filename}.json"),
+    ]
+
+
+def resolve_previous_continuity(
+    continuity_dir: str | Path,
+    *,
+    target_segment_id: str,
+) -> tuple[Path, Path] | None:
+    """Find the immediately prior segment's SHA-bound continuity pair."""
+
+    source_segment_id = previous_segment_id(target_segment_id)
+    if source_segment_id is None:
+        return None
+    for frame, metadata in _continuity_candidates(continuity_dir, source_segment_id):
+        frame_exists = frame.is_file() and frame.stat().st_size > 0
+        metadata_exists = metadata.is_file() and metadata.stat().st_size > 0
+        if frame_exists and metadata_exists:
+            return frame, metadata
+        if frame_exists != metadata_exists:
+            raise ContinuityFrameError(
+                f"incomplete continuity pair for {source_segment_id}: "
+                f"frame={frame_exists}, metadata={metadata_exists}"
+            )
+    return None
 
 
 def load_continuity_frame(
@@ -80,6 +133,16 @@ def load_continuity_frame(
         raise ContinuityFrameError("continuity metadata has no source_segment_id")
     if source_segment_id == target_segment_id:
         raise ContinuityFrameError("continuity frame must come from a prior segment")
+    expected_source = previous_segment_id(target_segment_id)
+    if expected_source is not None and source_segment_id != expected_source:
+        raise ContinuityFrameError(
+            f"continuity frame must come from {expected_source}, not {source_segment_id}"
+        )
+    derived_for = str(payload.get("derived_for_next_segment_id") or "").strip()
+    if derived_for and derived_for != target_segment_id:
+        raise ContinuityFrameError(
+            f"continuity metadata targets {derived_for}, not {target_segment_id}"
+        )
     if payload.get("frame_file") != frame.name:
         raise ContinuityFrameError("continuity frame filename does not match metadata")
 
@@ -229,6 +292,13 @@ def install_continuity_bridge(frame: ContinuityFrame) -> Iterator[None]:
         base._base_report = original_report
 
 
+def _run_base(arguments: list[str], frame: ContinuityFrame | None) -> int:
+    if frame is None:
+        return base.main(arguments)
+    with install_continuity_bridge(frame):
+        return base.main(arguments)
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     continuity_args, remaining = build_continuity_parser().parse_known_args(arguments)
@@ -241,29 +311,77 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return base.EXIT_INPUT
-    if not supplied:
-        return base.main(remaining)
 
     try:
         input_mode = _option_value(remaining, "--input-mode", "first_frame")
-        if input_mode != "references":
-            raise ContinuityFrameError(
-                "continuity frame is supported only with --input-mode references"
-            )
         target_segment_id = _option_value(remaining, "--segment-id")
+        output_value = _option_value(remaining, "--output")
+        stage = _option_value(remaining, "--stage", "preflight")
         if not target_segment_id:
             raise ContinuityFrameError("--segment-id is required")
-        frame = load_continuity_frame(
-            continuity_args.continuity_frame,
-            continuity_args.continuity_frame_metadata,
-            target_segment_id=target_segment_id,
+        if not output_value:
+            raise ContinuityFrameError("--output is required")
+
+        continuity_dir = (
+            Path(continuity_args.continuity_dir).resolve()
+            if continuity_args.continuity_dir
+            else _default_continuity_dir(remaining)
         )
+        if continuity_dir is None:
+            raise ContinuityFrameError("could not resolve continuity directory")
+
+        frame: ContinuityFrame | None = None
+        if supplied:
+            if input_mode != "references":
+                raise ContinuityFrameError(
+                    "continuity frame is supported only with --input-mode references"
+                )
+            frame = load_continuity_frame(
+                continuity_args.continuity_frame,
+                continuity_args.continuity_frame_metadata,
+                target_segment_id=target_segment_id,
+            )
+        elif input_mode == "references":
+            resolved = resolve_previous_continuity(
+                continuity_dir,
+                target_segment_id=target_segment_id,
+            )
+            if resolved is not None:
+                frame = load_continuity_frame(
+                    resolved[0],
+                    resolved[1],
+                    target_segment_id=target_segment_id,
+                )
     except (OSError, ValueError, ContinuityFrameError) as exc:
         print(f"input error: {exc}", file=sys.stderr)
         return base.EXIT_INPUT
 
-    with install_continuity_bridge(frame):
-        return base.main(remaining)
+    result = _run_base(remaining, frame)
+    if result != base.EXIT_OK or stage != "render":
+        return result
+
+    try:
+        derived = extract_segment_end_frame(
+            segment_id=target_segment_id,
+            video=output_value,
+            output_dir=continuity_dir / target_segment_id,
+            offset_seconds=0.10,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(
+            f"provider error: generated video was preserved but continuity extraction failed: {exc}",
+            file=sys.stderr,
+        )
+        return base.EXIT_PROVIDER
+
+    print(
+        "Continuity frame: GENERATED\n"
+        f"Source segment: {target_segment_id}\n"
+        f"Next segment: {derived['derived_for_next_segment_id']}\n"
+        f"Frame: {derived['frame_path']}\n"
+        f"Metadata: {derived['metadata_path']}"
+    )
+    return base.EXIT_OK
 
 
 if __name__ == "__main__":

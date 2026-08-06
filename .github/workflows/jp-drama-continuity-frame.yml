@@ -6,37 +6,45 @@ on:
       - ".github/workflows/jp-drama-continuity-frame.yml"
       - "src/apps/jp_drama/workflows/extract_segment_end_frame.py"
       - "src/apps/jp_drama/workflows/render_happyhorse_segment_continuity_canary.py"
+      - "src/apps/jp_drama/workflows/segment_id.py"
       - "tests/test_jp_drama_continuity_frame.py"
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/jp-drama-continuity-frame.yml"
-  workflow_run:
-    workflows: ["Japanese Drama E01-G01 HappyHorse Hosted Recovery"]
-    types: [completed]
+      - "tests/test_jp_drama_segment_id.py"
+  workflow_call:
+    inputs:
+      source_run_id:
+        description: "Successful workflow run containing the generated MP4"
+        required: true
+        type: string
+      source_artifact:
+        description: "Artifact containing the generated MP4"
+        required: true
+        type: string
+      segment_id:
+        description: "Source generation segment ID"
+        required: true
+        type: string
+      video_filename:
+        description: "MP4 filename inside the source artifact"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       source_run_id:
         description: "Successful workflow run containing the generated MP4"
         required: true
-        default: "31085709337"
       source_artifact:
         description: "Artifact containing the generated MP4"
         required: true
-        default: "happyhorse-e01-g01-r2v-10s-hosted-result"
       segment_id:
-        description: "Source segment ID"
+        description: "Source generation segment ID, for example E01-G02"
         required: true
-        default: "E01-G01"
       video_filename:
         description: "MP4 filename inside the source artifact"
         required: true
-        default: "E01-G01-r2v.mp4"
 
 permissions:
   actions: read
   contents: read
-  issues: write
 
 jobs:
   contract-test:
@@ -57,21 +65,21 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-docker.txt
           python -m pip install pytest
-      - name: Test continuity extraction and fail-closed handoff
-        run: python -m pytest -q tests/test_jp_drama_continuity_frame.py
+      - name: Test automatic continuity extraction and handoff
+        run: |
+          python -m pytest -q \
+            tests/test_jp_drama_continuity_frame.py \
+            tests/test_jp_drama_segment_id.py
 
   derive:
-    if: >-
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || github.event_name == 'workflow_dispatch' && inputs.source_run_id || '31085709337' }}
-      SOURCE_ARTIFACT: ${{ github.event_name == 'workflow_run' && 'happyhorse-e01-g01-r2v-10s-hosted-result' || github.event_name == 'workflow_dispatch' && inputs.source_artifact || 'happyhorse-e01-g01-r2v-10s-hosted-result' }}
-      SEGMENT_ID: ${{ github.event_name == 'workflow_run' && 'E01-G01' || github.event_name == 'workflow_dispatch' && inputs.segment_id || 'E01-G01' }}
-      VIDEO_FILENAME: ${{ github.event_name == 'workflow_run' && 'E01-G01-r2v.mp4' || github.event_name == 'workflow_dispatch' && inputs.video_filename || 'E01-G01-r2v.mp4' }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_ARTIFACT: ${{ inputs.source_artifact }}
+      SEGMENT_ID: ${{ inputs.segment_id }}
+      VIDEO_FILENAME: ${{ inputs.video_filename }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -108,11 +116,3 @@ jobs:
           path: output/jp_drama/continuity/${{ env.SEGMENT_ID }}
           if-no-files-found: error
           retention-days: 30
-      - name: Report continuity artifact to issue 37
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          BODY="E01_G01_CONTINUITY_FRAME: run_id=$GITHUB_RUN_ID artifact=jp-drama-$SEGMENT_ID-continuity-frame source_run_id=$SOURCE_RUN_ID frame=${SEGMENT_ID}_end.png"
-          gh api --method POST \
-            "/repos/$GITHUB_REPOSITORY/issues/37/comments" \
-            -f "body=$BODY"
