@@ -1,0 +1,17 @@
+Japanese live-action vertical short drama, 9:16.
+Use the ordered approved reference images exactly as follows:
+[Image 1] is the approved character identity, age, face, hair, body and costume reference for C01.
+[Image 2] is the approved location architecture, layout, period, lighting and furniture reference for S01.
+[Image 3] is the approved location architecture, layout, period, lighting and furniture reference for S05.
+[Image 4] is the approved prop identity, material, color, scale, state and count reference for P03.
+[Image 5] is the approved prop identity, material, color, scale, state and count reference for P04.
+Preserve the approved reference identities, period details, prop states, lighting, spatial layout, and screen direction.
+Narrative: 色の足りない海: C01が海の絵を塗るが本物の色を出せず筆を止める
+Visual: 写実寄りのノスタルジック映画調、1880年代の日本・横浜山手にある外国人学校、 秋の柔らかな自然光、低彩度、繊細な布と木の質感、35mmフィルム風の控えめな粒子、 縦型9:16、過度な美化を避け、映像内に文字・現代ロゴ・字幕を生成しない。 参照素材を厳密に維持: 僕, 教室, 横浜港の記憶, 未完成の海の絵, 少年の安い絵具。C01が海の絵を塗るが本物の色を出せず筆を止める。 最後はP03は未完成、C01は隣の机を見る。
+Motion: 創作の喜びからもどかしさへ変化する。小道具と人物の位置・個数を維持する。
+Camera: medium_close_up, eye_level, push_in, slow
+Timing: 0-10秒: C01が海の絵を塗るが本物の色を出せず筆を止める。感情は創作の喜びからもどかしさへ。 最後はP03は未完成、C01は隣の机を見る。
+Spoken dialogue: Use natural Japanese and synchronize the visible speaker's mouth to this dialogue exactly: 僕(inner_monologue): 海は、こんな色じゃない
+Audio: 日本語の台詞、控えめな環境音。字幕・話数・文字は後処理。
+Constraints: 成人、現代の詰襟制服、現代ロゴ、派手な装飾、年齢変化、髪型変更、衣装変更、 過度な美少年化、文字、字幕。; 現代設備、蛍光灯、プラスチック、現代文字、人物、字幕、ロゴ。; 現代船、コンテナ、現代港湾設備、読める文字、人物、字幕、ロゴ。; 写真、印刷物、完成作品、読める文字、現代船、ロゴ。; 現代パッケージ、プラスチック、鮮やかな高級絵具、読める文字、ロゴ。; 字幕、話数、ロゴ、読める文字を映像へ描かない; 人物の顔、年齢、髪型、衣装、体格を変えない; 小道具の個数、所有者、位置、状態を勝手に変えない; risk:memory_reality_transition; risk:generated_text_on_paper
+Do not add subtitles, captions, logos, watermarks, title cards, or on-screen text.
