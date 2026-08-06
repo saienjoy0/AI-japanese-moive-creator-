@@ -7,6 +7,10 @@ on:
       - "src/apps/jp_drama/workflows/extract_segment_end_frame.py"
       - "src/apps/jp_drama/workflows/render_happyhorse_segment_continuity_canary.py"
       - "tests/test_jp_drama_continuity_frame.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/jp-drama-continuity-frame.yml"
   workflow_run:
     workflows: ["Japanese Drama E01-G01 HappyHorse Hosted Recovery"]
     types: [completed]
@@ -57,15 +61,16 @@ jobs:
 
   derive:
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.source_run_id }}
-      SOURCE_ARTIFACT: ${{ github.event_name == 'workflow_run' && 'happyhorse-e01-g01-r2v-10s-hosted-result' || inputs.source_artifact }}
-      SEGMENT_ID: ${{ github.event_name == 'workflow_run' && 'E01-G01' || inputs.segment_id }}
-      VIDEO_FILENAME: ${{ github.event_name == 'workflow_run' && 'E01-G01-r2v.mp4' || inputs.video_filename }}
+      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || github.event_name == 'workflow_dispatch' && inputs.source_run_id || '31085709337' }}
+      SOURCE_ARTIFACT: ${{ github.event_name == 'workflow_run' && 'happyhorse-e01-g01-r2v-10s-hosted-result' || github.event_name == 'workflow_dispatch' && inputs.source_artifact || 'happyhorse-e01-g01-r2v-10s-hosted-result' }}
+      SEGMENT_ID: ${{ github.event_name == 'workflow_run' && 'E01-G01' || github.event_name == 'workflow_dispatch' && inputs.segment_id || 'E01-G01' }}
+      VIDEO_FILENAME: ${{ github.event_name == 'workflow_run' && 'E01-G01-r2v.mp4' || github.event_name == 'workflow_dispatch' && inputs.video_filename || 'E01-G01-r2v.mp4' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
