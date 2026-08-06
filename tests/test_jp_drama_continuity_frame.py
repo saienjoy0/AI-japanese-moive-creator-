@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.apps.jp_drama.rendering.ffmpeg import file_sha256
+from src.apps.jp_drama.workflows import render_happyhorse_segment_continuity_canary as continuity
 from src.apps.jp_drama.workflows.extract_segment_end_frame import (
     SCHEMA_VERSION,
     extract_segment_end_frame,
@@ -17,6 +18,7 @@ from src.apps.jp_drama.workflows.render_happyhorse_segment_continuity_canary imp
     ContinuityFrameError,
     append_continuity_prompt,
     load_continuity_frame,
+    resolve_previous_continuity,
 )
 
 
@@ -42,7 +44,7 @@ def _make_video(path: Path) -> None:
     )
 
 
-def test_extracts_sha_bound_end_frame(tmp_path: Path) -> None:
+def test_extracts_sha_bound_end_frame_for_next_segment(tmp_path: Path) -> None:
     video = tmp_path / "E01-G01-r2v.mp4"
     _make_video(video)
 
@@ -58,6 +60,7 @@ def test_extracts_sha_bound_end_frame(tmp_path: Path) -> None:
     assert frame.is_file() and frame.stat().st_size > 0
     assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["source_segment_id"] == "E01-G01"
+    assert payload["derived_for_next_segment_id"] == "E01-G02"
     assert payload["source_video_sha256"] == file_sha256(video)
     assert payload["frame_sha256"] == file_sha256(frame)
     assert payload["frame_file"] == "E01-G01_end.png"
@@ -118,6 +121,25 @@ def test_retries_slightly_earlier_when_tail_boundary_has_no_frame(
     assert report["offset_from_end_seconds"] == 0.13
 
 
+def test_resolves_immediately_previous_nested_continuity_pair(tmp_path: Path) -> None:
+    video = tmp_path / "E01-G01-r2v.mp4"
+    _make_video(video)
+    root = tmp_path / "continuity"
+    report = extract_segment_end_frame(
+        segment_id="E01-G01",
+        video=video,
+        output_dir=root / "E01-G01",
+    )
+
+    resolved = resolve_previous_continuity(root, target_segment_id="E01-G02")
+
+    assert resolved == (
+        Path(report["frame_path"]),
+        Path(report["metadata_path"]),
+    )
+    assert resolve_previous_continuity(root, target_segment_id="E01-G01") is None
+
+
 def test_rejects_frame_changed_after_extraction(tmp_path: Path) -> None:
     video = tmp_path / "E01-G01-r2v.mp4"
     _make_video(video)
@@ -134,6 +156,23 @@ def test_rejects_frame_changed_after_extraction(tmp_path: Path) -> None:
             frame,
             report["metadata_path"],
             target_segment_id="E01-G02",
+        )
+
+
+def test_rejects_non_immediate_source_segment(tmp_path: Path) -> None:
+    video = tmp_path / "E01-G01-r2v.mp4"
+    _make_video(video)
+    report = extract_segment_end_frame(
+        segment_id="E01-G01",
+        video=video,
+        output_dir=tmp_path / "continuity",
+    )
+
+    with pytest.raises(ContinuityFrameError, match="must come from E01-G02"):
+        load_continuity_frame(
+            report["frame_path"],
+            report["metadata_path"],
+            target_segment_id="E01-G03",
         )
 
 
@@ -163,6 +202,82 @@ def test_rejects_same_source_and_target_segment(tmp_path: Path) -> None:
             metadata,
             target_segment_id="E01-G01",
         )
+
+
+def test_wrapper_auto_loads_prior_frame_without_manual_flags(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    prior_video = tmp_path / "E01-G01-r2v.mp4"
+    _make_video(prior_video)
+    root = tmp_path / "continuity"
+    extract_segment_end_frame(
+        segment_id="E01-G01",
+        video=prior_video,
+        output_dir=root / "E01-G01",
+    )
+    captured = {}
+
+    def fake_run(arguments, frame):
+        captured["arguments"] = arguments
+        captured["frame"] = frame
+        return continuity.base.EXIT_OK
+
+    monkeypatch.setattr(continuity, "_run_base", fake_run)
+
+    result = continuity.main(
+        [
+            "--segment-id",
+            "E01-G02",
+            "--output",
+            str(tmp_path / "E01-G02-r2v.mp4"),
+            "--input-mode",
+            "references",
+            "--stage",
+            "preflight",
+            "--continuity-dir",
+            str(root),
+        ]
+    )
+
+    assert result == continuity.base.EXIT_OK
+    assert captured["frame"].source_segment_id == "E01-G01"
+
+
+def test_wrapper_auto_extracts_rendered_segment_end_frame(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "E01-G02-r2v.mp4"
+    _make_video(output)
+    root = tmp_path / "continuity"
+
+    monkeypatch.setattr(
+        continuity,
+        "_run_base",
+        lambda arguments, frame: continuity.base.EXIT_OK,
+    )
+
+    result = continuity.main(
+        [
+            "--segment-id",
+            "E01-G02",
+            "--output",
+            str(output),
+            "--input-mode",
+            "references",
+            "--stage",
+            "render",
+            "--continuity-dir",
+            str(root),
+        ]
+    )
+
+    assert result == continuity.base.EXIT_OK
+    metadata = root / "E01-G02" / "E01-G02_end.json"
+    payload = json.loads(metadata.read_text(encoding="utf-8"))
+    assert (root / "E01-G02" / "E01-G02_end.png").is_file()
+    assert payload["derived_for_next_segment_id"] == "E01-G03"
 
 
 def test_prompt_adds_the_next_image_binding(monkeypatch) -> None:
