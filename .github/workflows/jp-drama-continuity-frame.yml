@@ -36,6 +36,7 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: write
 
 jobs:
   contract-test:
@@ -107,3 +108,11 @@ jobs:
           path: output/jp_drama/continuity/${{ env.SEGMENT_ID }}
           if-no-files-found: error
           retention-days: 30
+      - name: Report continuity artifact to issue 37
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY="E01_G01_CONTINUITY_FRAME: run_id=$GITHUB_RUN_ID artifact=jp-drama-$SEGMENT_ID-continuity-frame source_run_id=$SOURCE_RUN_ID frame=${SEGMENT_ID}_end.png"
+          gh api --method POST \
+            "/repos/$GITHUB_REPOSITORY/issues/37/comments" \
+            -f "body=$BODY"
