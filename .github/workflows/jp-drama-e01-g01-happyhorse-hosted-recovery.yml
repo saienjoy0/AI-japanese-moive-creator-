@@ -58,7 +58,7 @@ jobs:
               "cancel-in-progress: false",
               "E01_G01_HOSTED_RENDER_RESERVATION:",
               "E01_G01_HOSTED_TASK_STATE:",
-              "started_at",
+              "STEP_COUNT",
               "actions/download-artifact@v4",
               "run-id:",
               "sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e",
@@ -99,7 +99,7 @@ jobs:
             test -n "$DASHSCOPE_WORKSPACE_ID"
           fi
 
-      - name: Prove the old render never started and cancel its pending run
+      - name: Prove the old render executed zero steps and cancel its pending run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -108,7 +108,13 @@ jobs:
           RENDER="$(jq -c '[.jobs[] | select(.name == "render")][0]' <<<"$JOBS")"
           test -n "$RENDER"
           test "$RENDER" != "null"
-          test "$(jq -r '.started_at // ""' <<<"$RENDER")" = ""
+          STEP_COUNT="$(jq -r '(.steps // []) | length' <<<"$RENDER")"
+          test "$STEP_COUNT" = "0"
+          RENDER_STATUS="$(jq -r '.status' <<<"$RENDER")"
+          case "$RENDER_STATUS" in
+            queued|waiting|pending|in_progress|completed) ;;
+            *) exit 1 ;;
+          esac
 
           STATUS="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.status')"
           if test "$STATUS" != "completed"; then
@@ -124,7 +130,8 @@ jobs:
 
           JOBS="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100")"
           RENDER="$(jq -c '[.jobs[] | select(.name == "render")][0]' <<<"$JOBS")"
-          test "$(jq -r '.started_at // ""' <<<"$RENDER")" = ""
+          STEP_COUNT="$(jq -r '(.steps // []) | length' <<<"$RENDER")"
+          test "$STEP_COUNT" = "0"
           CONCLUSION="$(jq -r '.conclusion // ""' <<<"$RENDER")"
           test "$CONCLUSION" = "cancelled" -o "$CONCLUSION" = "skipped"
 
@@ -234,6 +241,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          test -n "${STATE_DIR:-}" || exit 0
           test -f "$STATE_DIR/ledger.json" || exit 0
           VALUES="$(python - <<'PY'
           import json
