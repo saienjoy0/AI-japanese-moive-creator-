@@ -1,0 +1,416 @@
+name: Japanese Drama E01-G01 HappyHorse R2V Paid Canary
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/jp-drama-e01-g01-happyhorse-paid-canary.yml"
+      - "evidence/jp_drama/happyhorse/E01-G01/r2v-frozen/**"
+      - "src/apps/jp_drama/rendering/happyhorse11.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_segment_canary.py"
+  workflow_dispatch:
+    inputs:
+      approval_digest:
+        description: Paste the frozen E01-G01 approval digest exactly
+        required: true
+        default: "sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e"
+        type: string
+      confirm_paid_run:
+        description: Type RUN_E01_G01_HAPPYHORSE_R2V_10S_ONCE
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  STORYBOARD_COMMIT: 3070100f6ff25a3994a749b240f423f703cd294f
+  SEGMENT_ID: E01-G01
+  EXPECTED_APPROVAL_DIGEST: sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e
+  REQUEST_FINGERPRINT: sha256:4cc0dbce337978c8918e4ec8e93ad6d8922519cb5d81e2a92a49b93c1d311131
+  PROVIDER_CONFIG: examples/jp_drama/dashscope_happyhorse_live_providers.json
+  APPROVAL_ROOT: output/jp_drama/happyhorse-e01-g01-paid-approval
+
+jobs:
+  contract-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify paid-action safety contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          workflow = Path(
+              ".github/workflows/jp-drama-e01-g01-happyhorse-paid-canary.yml"
+          ).read_text(encoding="utf-8")
+          frozen = json.loads(
+              Path(
+                  "evidence/jp_drama/happyhorse/E01-G01/r2v-frozen/frozen_request.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert frozen["approval_digest"] == (
+              "sha256:3ec02df5cebad83874ac04ac3b1711037af70231fa8861e3df939e744b70eb3e"
+          )
+          assert frozen["approval_material"]["request"]["duration"] == 10
+          assert frozen["approval_material"]["request"]["resolution"] == "720P"
+          assert frozen["approval_material"]["provider_submission_limit"] == 1
+          assert "RUN_E01_G01_HAPPYHORSE_R2V_10S_ONCE" in workflow
+          assert "--max-api-calls 1" in workflow
+          assert "--max-cost-cny 6" in workflow
+          assert "cancel-in-progress: false" in workflow
+          assert "runs-on: self-hosted" in workflow
+          assert "environment: happyhorse-paid" in workflow
+          assert "STATE_DIR=\"$RUNNER_WORKSPACE/.happyhorse-paid-state/" in workflow
+          PY
+
+  preflight:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SUPPLIED_APPROVAL_DIGEST: ${{ inputs.approval_digest }}
+      CONFIRM_PAID_RUN: ${{ inputs.confirm_paid_run }}
+      DASHSCOPE_API_KEY: ""
+      DASHSCOPE_WORKSPACE_ID: ""
+      MINIMAX_API_KEY: ""
+      MULEROUTER_API_KEY: ""
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ""
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ""
+      OSS_ENDPOINT: ""
+      OSS_BUCKET_NAME: ""
+    steps:
+      - name: Require main and explicit one-run authorization
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$CONFIRM_PAID_RUN" = "RUN_E01_G01_HAPPYHORSE_R2V_10S_ONCE"
+          test "$SUPPLIED_APPROVAL_DIGEST" = "$EXPECTED_APPROVAL_DIGEST"
+
+      - name: Checkout AI movie creator
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Storyboard source
+        uses: actions/checkout@v4
+        with:
+          repository: saienjoy0/Storyboard-Generator
+          ref: 3070100f6ff25a3994a749b240f423f703cd294f
+          path: storyboard-source
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+
+      - name: Rebuild the pinned E01 production inputs
+        run: |
+          rm -rf output/one-bunch-series output/one-bunch-preproduction "$APPROVAL_ROOT"
+          python -m src.apps.jp_drama.workflows.import_series_production_plan \
+            --series-plan "storyboard-source/projects/一房の葡萄/一房の葡萄_generation_plan.yaml" \
+            --asset-catalog "storyboard-source/projects/一房の葡萄/一房の葡萄_asset_catalog.yaml" \
+            --output-dir output/one-bunch-series \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json \
+            --minimax-h3-config examples/jp_drama/minimax_h3_live_provider.json \
+            --source-commit "$STORYBOARD_COMMIT" \
+            --require-route-ready
+          python -m src.apps.jp_drama.workflows.build_preproduction_package \
+            --series-output output/one-bunch-series \
+            --source-series-plan "storyboard-source/projects/一房の葡萄/一房の葡萄_generation_plan.yaml" \
+            --source-asset-catalog "storyboard-source/projects/一房の葡萄/一房の葡萄_asset_catalog.yaml" \
+            --live-provider-config examples/jp_drama/dashscope_live_providers.json \
+            --output-dir output/one-bunch-preproduction
+          python -m src.apps.jp_drama.workflows.apply_master_reference_approval \
+            --preproduction-root output/one-bunch-preproduction \
+            --approval-manifest assets/jp_drama/one_bunch_of_grapes/master_references/v1/human_approval.json \
+            --repository-root .
+
+      - name: Materialize the R2V bundle with the approved 17 masters
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from src.apps.jp_drama.assets.models import ApprovedAssetBundle
+
+          root = Path("output/one-bunch-preproduction")
+          pending = json.loads(
+              (root / "production_contract/E01/wan/asset_bundle_pending.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          bindings = json.loads(
+              (root / "approval_templates/E01/wan/bindings.template.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          approval = json.loads(
+              Path(
+                  "assets/jp_drama/one_bunch_of_grapes/master_references/v1/human_approval.json"
+              ).read_text(encoding="utf-8")
+          )
+          approved_by_source = {
+              item["source_asset_id"]: item for item in approval["assets"]
+          }
+          materialized = []
+          for asset in pending["assets"]:
+              binding = bindings["assets"].get(asset["asset_id"])
+              if binding is None:
+                  materialized.append(asset)
+                  continue
+              approved = approved_by_source[binding["source_asset_id"]]
+              digest = str(approved["sha256"])
+              if not digest.startswith("sha256:"):
+                  digest = "sha256:" + digest
+              materialized.append(
+                  {
+                      **asset,
+                      "approval_status": "approved",
+                      "asset_path": approved["path"],
+                      "asset_sha256": digest,
+                      "mime_type": "image/png",
+                      "width": approved["width"],
+                      "height": approved["height"],
+                      "verified_against_asset_ids": [],
+                      "generated_by": approved["generated_by"],
+                      "operation_id": approved["operation_id"],
+                      "approved_at": approval["approved_at"],
+                      "approved_by": approval["approved_by"],
+                  }
+              )
+          bundle = ApprovedAssetBundle.build_with_digest(
+              schema_version=pending["schema_version"],
+              bundle_id=pending["bundle_id"],
+              source_episode_id=pending["source_episode_id"],
+              source_prepared_episode_digest=pending["source_prepared_episode_digest"],
+              generation_plan_digest=pending["generation_plan_digest"],
+              assets=materialized,
+              voice_profiles=pending["voice_profiles"],
+          )
+          target = root / "production_contract/E01/wan/asset_bundle_masters_approved.json"
+          target.write_text(bundle.to_canonical_json() + "\n", encoding="utf-8")
+          PY
+
+      - name: Re-run zero-call preflight and verify the frozen request
+        run: |
+          mkdir -p "$APPROVAL_ROOT/input"
+          python -m src.apps.jp_drama.workflows.render_happyhorse_segment_canary \
+            --prepared-input output/one-bunch-preproduction/production_contract/E01/prepared_episode.json \
+            --generation-plan output/one-bunch-preproduction/production_contract/E01/wan/generation_plan_episode.json \
+            --segment-id E01-G01 \
+            --asset-bundle output/one-bunch-preproduction/production_contract/E01/wan/asset_bundle_masters_approved.json \
+            --providers "$PROVIDER_CONFIG" \
+            --output "$APPROVAL_ROOT/E01-G01-r2v.mp4" \
+            --input-mode references \
+            --stage preflight \
+            --resolution 720P \
+            --max-api-calls 1 \
+            --max-cost-cny 6 \
+            --cost-reserve-cny 6 \
+            --report "$APPROVAL_ROOT/preflight.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          root = Path(os.environ["APPROVAL_ROOT"])
+          preflight = json.loads((root / "preflight.json").read_text(encoding="utf-8"))
+          frozen = json.loads(
+              Path(
+                  "evidence/jp_drama/happyhorse/E01-G01/r2v-frozen/frozen_request.json"
+              ).read_text(encoding="utf-8")
+          )
+          expected = frozen["approval_material"]
+          approval_material = {
+              "schema_version": "1.0.0",
+              "purpose": "E01-G01 HappyHorse 1.1 R2V single paid-canary approval",
+              "protocol": preflight["protocol"],
+              "model": preflight["model"],
+              "segment_id": preflight["segment_id"],
+              "generation_plan_digest": preflight["generation_plan_digest"],
+              "approved_asset_bundle_digest": preflight["approved_asset_bundle_digest"],
+              "reference_manifest_digest": preflight["reference_manifest_digest"],
+              "provider_route_id": preflight["provider_route_id"],
+              "source_provider_route_id": preflight["source_provider_route_id"],
+              "request": preflight["request"],
+              "references": preflight["references"],
+              "cost_reserve_cny": preflight["cost_reserve_cny"],
+              "provider_submission_limit": 1,
+              "external_tts_calls": 0,
+          }
+          assert approval_material == expected
+          canonical = json.dumps(
+              approval_material,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
+          assert digest == frozen["approval_digest"] == os.environ["EXPECTED_APPROVAL_DIGEST"]
+          assert preflight["request"]["request_fingerprint"] == os.environ["REQUEST_FINGERPRINT"]
+          assert preflight["external_api_calls"] == 0
+          assert preflight["provider_submissions_this_run"] == 0
+          assert [item["subject_id"] for item in preflight["references"]] == [
+              "C01", "S01", "S05", "P03", "P04"
+          ]
+          (root / "approval.json").write_text(
+              json.dumps(
+                  {
+                      "approval_digest": digest,
+                      "request_fingerprint": os.environ["REQUEST_FINGERPRINT"],
+                      "approval_material": approval_material,
+                  },
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  indent=2,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          source = Path("output/one-bunch-preproduction/production_contract/E01")
+          shutil.copy2(source / "prepared_episode.json", root / "input/prepared_episode.json")
+          shutil.copy2(
+              source / "wan/generation_plan_episode.json",
+              root / "input/generation_plan_episode.json",
+          )
+          shutil.copy2(
+              source / "wan/asset_bundle_masters_approved.json",
+              root / "input/asset_bundle_masters_approved.json",
+          )
+          PY
+          test ! -e "$APPROVAL_ROOT/E01-G01-r2v.mp4"
+
+      - name: Upload sealed render inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: happyhorse-e01-g01-r2v-paid-approval
+          path: ${{ env.APPROVAL_ROOT }}
+          if-no-files-found: error
+          retention-days: 7
+
+  render:
+    if: github.event_name == 'workflow_dispatch'
+    needs: preflight
+    runs-on: self-hosted
+    timeout-minutes: 60
+    environment: happyhorse-paid
+    concurrency:
+      group: jp-drama-happyhorse-e01-g01-r2v-10s
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install runtime dependencies
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+
+      - name: Download sealed render inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: happyhorse-e01-g01-r2v-paid-approval
+          path: ${{ env.APPROVAL_ROOT }}
+
+      - name: Resolve persistent one-task state directory
+        run: |
+          REPO_KEY="${GITHUB_REPOSITORY//\//_}"
+          FP_KEY="${REQUEST_FINGERPRINT#sha256:}"
+          STATE_DIR="$RUNNER_WORKSPACE/.happyhorse-paid-state/$REPO_KEY/E01-G01/$FP_KEY"
+          mkdir -p "$STATE_DIR"
+          printf 'STATE_DIR=%s\n' "$STATE_DIR" >> "$GITHUB_ENV"
+          cp "$APPROVAL_ROOT/approval.json" "$STATE_DIR/approval.json"
+
+      - name: Render or resume the one approved 10-second R2V task
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
+          DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
+          DASHSCOPE_UPLOAD_BASE_URL: ${{ secrets.DASHSCOPE_UPLOAD_BASE_URL }}
+        run: |
+          test -n "$DASHSCOPE_API_KEY"
+          if test -z "$DASHSCOPE_BASE_URL"; then
+            test -n "$DASHSCOPE_WORKSPACE_ID"
+          fi
+          test "$(python -c 'import json; print(json.load(open("'"$APPROVAL_ROOT"'/approval.json"))["approval_digest"])')" = "$EXPECTED_APPROVAL_DIGEST"
+          python -m src.apps.jp_drama.workflows.render_happyhorse_segment_canary \
+            --prepared-input "$APPROVAL_ROOT/input/prepared_episode.json" \
+            --generation-plan "$APPROVAL_ROOT/input/generation_plan_episode.json" \
+            --segment-id E01-G01 \
+            --asset-bundle "$APPROVAL_ROOT/input/asset_bundle_masters_approved.json" \
+            --providers "$PROVIDER_CONFIG" \
+            --output "$STATE_DIR/E01-G01-r2v.mp4" \
+            --input-mode references \
+            --stage render \
+            --resolution 720P \
+            --max-api-calls 1 \
+            --max-cost-cny 6 \
+            --cost-reserve-cny 6 \
+            --ledger-file "$STATE_DIR/ledger.json" \
+            --report "$STATE_DIR/render.json" \
+            --print-report
+
+      - name: Verify the durable task ledger and output
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          state = Path(os.environ["STATE_DIR"])
+          ledger = json.loads((state / "ledger.json").read_text(encoding="utf-8"))
+          report = json.loads((state / "render.json").read_text(encoding="utf-8"))
+          video = state / "E01-G01-r2v.mp4"
+          assert ledger["source_digest"] == os.environ["REQUEST_FINGERPRINT"]
+          assert ledger["max_api_calls"] == 1
+          assert len(ledger["operations"]) == 1
+          operation = next(iter(ledger["operations"].values()))
+          assert operation["provider_task_id"]
+          assert operation["status"] == "succeeded"
+          assert report["valid"] is True
+          assert report["status"] in {
+              "succeeded_awaiting_human_review",
+              "reused_verified_output",
+          }
+          assert report["request"]["duration"] == 10
+          assert report["request"]["resolution"] == "720P"
+          assert report["request"]["request_fingerprint"] == os.environ["REQUEST_FINGERPRINT"]
+          assert video.is_file() and video.stat().st_size > 0
+          digest = "sha256:" + hashlib.sha256(video.read_bytes()).hexdigest()
+          assert operation["output_sha256"] == digest == report["output_sha256"]
+          PY
+
+      - name: Copy evidence for artifact upload
+        if: always()
+        run: |
+          rm -rf output/jp_drama/happyhorse-e01-g01-paid-result
+          mkdir -p output/jp_drama/happyhorse-e01-g01-paid-result
+          if test -n "${STATE_DIR:-}" && test -d "$STATE_DIR"; then
+            cp -a "$STATE_DIR/." output/jp_drama/happyhorse-e01-g01-paid-result/
+          fi
+
+      - name: Upload the generated MP4 and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: happyhorse-e01-g01-r2v-10s-result
+          path: output/jp_drama/happyhorse-e01-g01-paid-result
+          if-no-files-found: warn
+          retention-days: 14
