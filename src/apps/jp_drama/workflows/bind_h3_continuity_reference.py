@@ -154,9 +154,13 @@ def bind(
     _copy(continuity.path, copied_frame, overwrite=overwrite)
     _copy(continuity.metadata_path, copied_metadata, overwrite=overwrite)
 
+    # Persist only paths relative to this binding file's directory. GitHub Actions
+    # workspaces are ephemeral, so absolute runner paths would break after download.
+    frame_relative = copied_frame.relative_to(output_dir).as_posix()
+    metadata_relative = copied_metadata.relative_to(output_dir).as_posix()
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "source_handoff_path": str(handoff_path.resolve()),
+        "source_handoff_file": Path(handoff_path).name,
         "source_handoff_sha256": file_sha256(handoff_path.resolve()),
         "source_workflow_run_id": SOURCE_RUN_ID,
         "source_artifact": SOURCE_ARTIFACT,
@@ -164,15 +168,16 @@ def bind(
         "target_segment_id": TARGET_SEGMENT_ID,
         "target_provider_route_id": TARGET_ROUTE_ID,
         "reference_role": REFERENCE_ROLE,
-        "frame_path": str(copied_frame),
+        "frame_path": frame_relative,
         "frame_sha256": continuity.frame_sha256,
-        "metadata_path": str(copied_metadata),
+        "metadata_path": metadata_relative,
         "metadata_sha256": continuity.metadata_sha256,
         "source_video_sha256": continuity.source_video_sha256,
         "width": continuity.width,
         "height": continuity.height,
         "offset_from_end_seconds": continuity.offset_from_end_seconds,
         "send_full_previous_video": False,
+        "requires_publication_before_h3_submit": True,
         "external_api_calls": 0,
     }
     payload["content_digest"] = _digest(payload)
@@ -189,6 +194,7 @@ def bind(
         "target_segment_id": TARGET_SEGMENT_ID,
         "target_provider_route_id": TARGET_ROUTE_ID,
         "send_full_previous_video": False,
+        "requires_publication_before_h3_submit": True,
         "external_api_calls": 0,
     }
 

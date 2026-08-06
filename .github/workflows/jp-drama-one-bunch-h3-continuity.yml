@@ -157,7 +157,8 @@ jobs:
               Path("output").rglob("E01-G02.h3-continuity-reference.json")
           )
           assert len(matches) == 1
-          binding = json.loads(matches[0].read_text(encoding="utf-8"))
+          binding_path = matches[0]
+          binding = json.loads(binding_path.read_text(encoding="utf-8"))
           assert binding["source_workflow_run_id"] == "31091499445"
           assert binding["source_artifact"] == "jp-drama-E01-G01-continuity-frame"
           assert binding["source_segment_id"] == "E01-G01"
@@ -166,7 +167,11 @@ jobs:
           assert binding["reference_role"] == "storyboard"
           assert binding["send_full_previous_video"] is False
           assert binding["external_api_calls"] == 0
-          assert Path(binding["frame_path"]).is_file()
+          assert binding["requires_publication_before_h3_submit"] is True
+          assert not Path(binding["frame_path"]).is_absolute()
+          assert not Path(binding["metadata_path"]).is_absolute()
+          assert (binding_path.parent / binding["frame_path"]).is_file()
+          assert (binding_path.parent / binding["metadata_path"]).is_file()
           PY
 
       - name: Upload continuity-ready H3 handoff
