@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,6 +63,59 @@ def test_extracts_sha_bound_end_frame(tmp_path: Path) -> None:
     assert payload["frame_file"] == "E01-G01_end.png"
     assert payload["width"] == 180
     assert payload["height"] == 320
+    assert payload["requested_offset_from_end_seconds"] == 0.1
+    assert payload["offset_from_end_seconds"] >= 0.1
+
+
+def test_retries_slightly_earlier_when_tail_boundary_has_no_frame(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    video = tmp_path / "E01-G01-r2v.mp4"
+    _make_video(video)
+    reference = tmp_path / "reference.png"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            "0.5",
+            "-i",
+            str(video),
+            "-frames:v",
+            "1",
+            str(reference),
+        ],
+        check=True,
+    )
+
+    calls: list[list[str]] = []
+
+    def fake_run(command, *, check, capture_output, text):
+        calls.append(command)
+        if len(calls) == 1:
+            return SimpleNamespace(returncode=0, stderr="", stdout="")
+        shutil.copyfile(reference, Path(command[-1]))
+        return SimpleNamespace(returncode=0, stderr="", stdout="")
+
+    monkeypatch.setattr(
+        "src.apps.jp_drama.workflows.extract_segment_end_frame.subprocess.run",
+        fake_run,
+    )
+
+    report = extract_segment_end_frame(
+        segment_id="E01-G01",
+        video=video,
+        output_dir=tmp_path / "continuity",
+        offset_seconds=0.10,
+    )
+
+    assert len(calls) == 2
+    assert report["requested_offset_from_end_seconds"] == 0.10
+    assert report["offset_from_end_seconds"] == 0.13
 
 
 def test_rejects_frame_changed_after_extraction(tmp_path: Path) -> None:
