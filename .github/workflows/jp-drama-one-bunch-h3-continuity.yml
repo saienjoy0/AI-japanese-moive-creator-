@@ -132,7 +132,7 @@ jobs:
 
       - name: Extract the first video's end frame and build continuity routing
         run: |
-          python -m src.apps.jp_drama.workflows.build_h3_continuity_reference \
+          python src/apps/jp_drama/workflows/build_h3_continuity_reference.py \
             --generation-plan "$PLAN" \
             --input-video "$MP4" \
             --h3-handoff "$HANDOFF" \
