@@ -12,6 +12,7 @@ from typing import Any
 
 from ..rendering.approval import ApprovalError, png_dimensions
 from ..rendering.ffmpeg import file_sha256
+from .segment_id import next_segment_id
 
 
 EXIT_OK = 0
@@ -46,6 +47,8 @@ def _safe_segment_id(value: str) -> str:
         raise SegmentEndFrameError("segment-id must not be empty")
     if any(token in segment_id for token in ("/", "\\", "..")):
         raise SegmentEndFrameError("segment-id must not contain path traversal")
+    # Validate the ordered generation-segment format while preserving the input text.
+    next_segment_id(segment_id)
     return segment_id
 
 
@@ -150,6 +153,7 @@ def extract_segment_end_frame(
     payload = {
         "schema_version": SCHEMA_VERSION,
         "source_segment_id": safe_segment_id,
+        "derived_for_next_segment_id": next_segment_id(safe_segment_id),
         "source_video_file": source.name,
         "source_video_sha256": file_sha256(source),
         "frame_file": frame.name,
