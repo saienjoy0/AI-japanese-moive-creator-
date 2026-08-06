@@ -65,6 +65,7 @@ jobs:
               "E01_G01_HOSTED_RESERVATION_RELEASE:",
               "E01_G01_HOSTED_TASK_STATE:",
               "https://dashscope.aliyuncs.com/api/v1/uploads",
+              "DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com",
               "STEP_COUNT",
               "actions/download-artifact@v4",
               "run-id:",
@@ -108,7 +109,6 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
           DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
-          DASHSCOPE_UPLOAD_BASE_URL: ${{ secrets.DASHSCOPE_UPLOAD_BASE_URL }}
         run: |
           set -euo pipefail
           test -n "$DASHSCOPE_API_KEY"
@@ -123,9 +123,6 @@ jobs:
               ws-*) ;;
               *) exit 1 ;;
             esac
-          fi
-          if test -n "$DASHSCOPE_UPLOAD_BASE_URL"; then
-            test "${DASHSCOPE_UPLOAD_BASE_URL%/}" = "https://dashscope.aliyuncs.com"
           fi
 
       - name: Authenticate the Beijing key without creating a video task
@@ -293,7 +290,7 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
           DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
-          DASHSCOPE_UPLOAD_BASE_URL: ${{ secrets.DASHSCOPE_UPLOAD_BASE_URL }}
+          DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com
         run: |
           python -m src.apps.jp_drama.workflows.render_happyhorse_segment_canary \
             --prepared-input "$APPROVAL_ROOT/input/prepared_episode.json" \
