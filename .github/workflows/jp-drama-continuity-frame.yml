@@ -51,6 +51,7 @@ jobs:
           sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
           python -m pip install -r requirements-docker.txt
+          python -m pip install pytest
       - name: Test continuity extraction and fail-closed handoff
         run: python -m pytest -q tests/test_jp_drama_continuity_frame.py
 
