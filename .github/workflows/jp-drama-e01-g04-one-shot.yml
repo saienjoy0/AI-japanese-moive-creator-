@@ -1,0 +1,388 @@
+name: Japanese Drama E01-G04 One Shot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/g4-one-shot-trigger.txt"
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: jp-drama-e01-g04-first-frame-i2v
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  CONTROL_ISSUE: "37"
+  SEALED_RUN_ID: "31077418519"
+  SEALED_ARTIFACT: happyhorse-e01-g01-r2v-paid-approval
+  PROVIDER_CONFIG: examples/jp_drama/dashscope_happyhorse_live_providers.json
+  SEGMENT_ID: E01-G04
+  RESULT_ARTIFACT: happyhorse-e01-g04-i2v-10s-result
+
+jobs:
+  generate:
+    if: >-
+      github.actor == github.repository_owner &&
+      github.event.head_commit.message == 'RUN_ONE_BUNCH_E01_G04_ONE_SHOT'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Require first workflow attempt
+        run: test "$GITHUB_RUN_ATTEMPT" = "1"
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg jq
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+
+      - name: Require Beijing API key
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: test -n "$DASHSCOPE_API_KEY"
+
+      - name: Download immutable episode inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SEALED_ARTIFACT }}
+          path: input/sealed
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SEALED_RUN_ID }}
+
+      - name: Locate immutable inputs
+        run: |
+          set -euo pipefail
+          PREPARED="$(find input/sealed -type f -path '*/input/prepared_episode.json' -print -quit)"
+          PLAN="$(find input/sealed -type f -path '*/input/generation_plan_episode.json' -print -quit)"
+          BUNDLE="$(find input/sealed -type f -path '*/input/asset_bundle_masters_approved.json' -print -quit)"
+          for value in "$PREPARED" "$PLAN" "$BUNDLE"; do test -n "$value" && test -s "$value"; done
+          STATE_DIR="$RUNNER_TEMP/e01-g04-one-shot"
+          mkdir -p "$STATE_DIR/input"
+          cp "$PREPARED" "$STATE_DIR/input/prepared_episode.json"
+          cp "$PLAN" "$STATE_DIR/input/generation_plan_episode.json"
+          cp "$BUNDLE" "$STATE_DIR/input/asset_bundle_masters_approved.json"
+          {
+            echo "PREPARED=$STATE_DIR/input/prepared_episode.json"
+            echo "PLAN=$STATE_DIR/input/generation_plan_episode.json"
+            echo "BUNDLE=$STATE_DIR/input/asset_bundle_masters_approved.json"
+            echo "STATE_DIR=$STATE_DIR"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare exact G4 master references
+        run: |
+          python -m src.apps.jp_drama.workflows.prepare_wan_master_keyframe \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --asset-bundle "$BUNDLE" \
+            --segment-id "$SEGMENT_ID" \
+            --manifest-output "$STATE_DIR/E01-G04.wan-master-references.json" \
+            --report "$STATE_DIR/master-preflight.json" \
+            --print-report
+
+      - name: Run zero-call keyframe preflight
+        run: |
+          python -m src.apps.jp_drama.workflows.render_wan_master_keyframe \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --asset-bundle "$BUNDLE" \
+            --master-reference-manifest "$STATE_DIR/E01-G04.wan-master-references.json" \
+            --providers "$PROVIDER_CONFIG" \
+            --segment-id "$SEGMENT_ID" \
+            --stage preflight \
+            --keyframe-output "$STATE_DIR/E01-G04-first-frame.png" \
+            --ledger-file "$STATE_DIR/keyframe-ledger.json" \
+            --max-api-calls 1 \
+            --max-cost-cny 1 \
+            --report "$STATE_DIR/keyframe-preflight.json" \
+            --print-report
+
+      - name: Verify keyframe request
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json, os
+          from pathlib import Path
+          state = Path(os.environ['STATE_DIR'])
+          report = json.loads((state / 'keyframe-preflight.json').read_text(encoding='utf-8'))
+          master = json.loads((state / 'master-preflight.json').read_text(encoding='utf-8'))
+          assert report['valid'] is True
+          assert report['segment_id'] == 'E01-G04'
+          assert report['model'] == 'wan2.7-image-pro'
+          assert report['external_api_calls'] == 0
+          assert report['max_api_calls'] == 1
+          assert master['valid'] is True
+          assert master['reference_count'] <= 9
+          print('KEYFRAME_APPROVAL_DIGEST=' + report['approval_digest'])
+          PY
+
+      - name: Reserve exactly one keyframe request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PREFIX="E01_G04_FIRST_FRAME_RESERVATION:"
+          COMMENTS="$(gh api --paginate "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments?per_page=100" | jq -s 'add')"
+          EXISTING="$(jq -r --arg p "$PREFIX" '[.[] | select(.body | startswith($p))] | length' <<< "$COMMENTS")"
+          test "$EXISTING" = "0"
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+            -f "body=$PREFIX run_id=$GITHUB_RUN_ID approval_digest=$KEYFRAME_APPROVAL_DIGEST attempt=1"
+
+      - name: Generate exactly one G4 first frame
+        id: keyframe
+        continue-on-error: true
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DASHSCOPE_BASE_URL: https://ws-fflq327rfjpr3ob2.cn-beijing.maas.aliyuncs.com
+          DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com
+        run: |
+          python -m src.apps.jp_drama.workflows.render_wan_master_keyframe \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --asset-bundle "$BUNDLE" \
+            --master-reference-manifest "$STATE_DIR/E01-G04.wan-master-references.json" \
+            --providers "$PROVIDER_CONFIG" \
+            --segment-id "$SEGMENT_ID" \
+            --stage keyframe \
+            --keyframe-output "$STATE_DIR/E01-G04-first-frame.png" \
+            --ledger-file "$STATE_DIR/keyframe-ledger.json" \
+            --execute-paid \
+            --approval-digest "$KEYFRAME_APPROVAL_DIGEST" \
+            --max-api-calls 1 \
+            --max-cost-cny 1 \
+            --report "$STATE_DIR/keyframe-render.json" \
+            --print-report
+
+      - name: Verify generated first frame
+        id: verify_keyframe
+        if: steps.keyframe.outcome == 'success'
+        run: |
+          test -s "$STATE_DIR/E01-G04-first-frame.png"
+          test -s "$STATE_DIR/keyframe-ledger.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          state = Path(os.environ['STATE_DIR'])
+          operations = list((json.loads((state / 'keyframe-ledger.json').read_text(encoding='utf-8')).get('operations') or {}).values())
+          assert len(operations) == 1
+          assert operations[0]['status'] == 'succeeded'
+          PY
+
+      - name: Approve the verified first frame
+        if: steps.keyframe.outcome == 'success'
+        run: |
+          python -m src.apps.jp_drama.workflows.render_wan_master_keyframe \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --asset-bundle "$BUNDLE" \
+            --master-reference-manifest "$STATE_DIR/E01-G04.wan-master-references.json" \
+            --providers "$PROVIDER_CONFIG" \
+            --segment-id "$SEGMENT_ID" \
+            --stage approve \
+            --keyframe-output "$STATE_DIR/E01-G04-first-frame.png" \
+            --approval-manifest "$STATE_DIR/E01-G04-first-frame.approval.json" \
+            --ledger-file "$STATE_DIR/keyframe-ledger.json" \
+            --max-api-calls 1 \
+            --max-cost-cny 1 \
+            --report "$STATE_DIR/keyframe-approval-report.json" \
+            --print-report
+
+      - name: Register the approved first frame
+        if: steps.keyframe.outcome == 'success'
+        run: |
+          python -m src.apps.jp_drama.workflows.register_wan_master_keyframe \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --asset-bundle "$BUNDLE" \
+            --master-reference-manifest "$STATE_DIR/E01-G04.wan-master-references.json" \
+            --approval-manifest "$STATE_DIR/E01-G04-first-frame.approval.json" \
+            --segment-id "$SEGMENT_ID" \
+            --approved-by "$GITHUB_REPOSITORY_OWNER" \
+            --output-bundle "$STATE_DIR/asset_bundle_with_E01-G04_first_frame.json" \
+            --report "$STATE_DIR/first-frame-registration.json" \
+            --print-report
+
+      - name: Run zero-call G4 video preflight
+        if: steps.keyframe.outcome == 'success'
+        run: |
+          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_first_frame_canary \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --segment-id "$SEGMENT_ID" \
+            --asset-bundle "$STATE_DIR/asset_bundle_with_E01-G04_first_frame.json" \
+            --providers "$PROVIDER_CONFIG" \
+            --output "$STATE_DIR/E01-G04-i2v.mp4" \
+            --input-mode first_frame \
+            --stage preflight \
+            --continuity-dir "$STATE_DIR/continuity" \
+            --resolution 720P \
+            --max-api-calls 1 \
+            --max-cost-cny 6 \
+            --cost-reserve-cny 6 \
+            --report "$STATE_DIR/video-preflight.json" \
+            --print-report
+
+      - name: Verify exact G4 script and request
+        if: steps.keyframe.outcome == 'success'
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json, os
+          from pathlib import Path
+          report = json.loads((Path(os.environ['STATE_DIR']) / 'video-preflight.json').read_text(encoding='utf-8'))
+          prompt = report['request']['prompt']
+          assert report['valid'] is True
+          assert report['status'] == 'ready_for_single_paid_submission'
+          assert report['segment_id'] == 'E01-G04'
+          assert report['input_mode'] == 'first_frame'
+          assert report['model'] == 'happyhorse-1.1-i2v'
+          assert report['request']['duration'] == 10
+          assert report['provider_submissions_this_run'] == 0
+          assert report['external_api_calls'] == 0
+          assert report['first_frame']['asset_id'] == 'ref_first_E01-G04'
+          assert 'continuity_frame' not in report
+          for text in [
+              'hard scene cut',
+              '藍と洋紅がない。休みに教室にいたのは、君だけだ',
+              '僕じゃない',
+              'Only C02 moves the mouth',
+              'Only C01 moves the mouth',
+              'P02 is not visible',
+              'closed',
+              'Do not begin from',
+          ]:
+              assert text in prompt, text
+          print('VIDEO_FINGERPRINT=' + report['request']['request_fingerprint'])
+          PY
+
+      - name: Reserve exactly one G4 video request
+        if: steps.keyframe.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PREFIX="E01_G04_VIDEO_RESERVATION:"
+          COMMENTS="$(gh api --paginate "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments?per_page=100" | jq -s 'add')"
+          EXISTING="$(jq -r --arg p "$PREFIX" '[.[] | select(.body | startswith($p))] | length' <<< "$COMMENTS")"
+          test "$EXISTING" = "0"
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+            -f "body=$PREFIX run_id=$GITHUB_RUN_ID fingerprint=$VIDEO_FINGERPRINT attempt=1"
+
+      - name: Render exactly one G4 video
+        id: render
+        if: steps.keyframe.outcome == 'success'
+        continue-on-error: true
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DASHSCOPE_BASE_URL: https://ws-fflq327rfjpr3ob2.cn-beijing.maas.aliyuncs.com
+          DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com
+        run: |
+          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_first_frame_canary \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --segment-id "$SEGMENT_ID" \
+            --asset-bundle "$STATE_DIR/asset_bundle_with_E01-G04_first_frame.json" \
+            --providers "$PROVIDER_CONFIG" \
+            --output "$STATE_DIR/E01-G04-i2v.mp4" \
+            --input-mode first_frame \
+            --stage render \
+            --continuity-dir "$STATE_DIR/continuity" \
+            --resolution 720P \
+            --max-api-calls 1 \
+            --max-cost-cny 6 \
+            --cost-reserve-cny 6 \
+            --ledger-file "$STATE_DIR/video-ledger.json" \
+            --report "$STATE_DIR/video-render.json" \
+            --print-report
+
+      - name: Persist G4 provider task identity
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VALUES="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['STATE_DIR']) / 'video-ledger.json'
+          if not path.is_file():
+              print('none\tnone\tno_ledger')
+              raise SystemExit
+          operations = json.loads(path.read_text(encoding='utf-8')).get('operations') or {}
+          if not operations:
+              print('none\tnone\tno_operation')
+              raise SystemExit
+          operation = next(iter(operations.values()))
+          print('\t'.join([operation.get('provider_task_id') or 'none', operation.get('provider_request_id') or 'none', operation.get('status') or 'unknown']))
+          PY
+          )"
+          IFS=$'\t' read -r TASK_ID REQUEST_ID TASK_STATUS <<< "$VALUES"
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+            -f "body=E01_G04_VIDEO_TASK_STATE: run_id=$GITHUB_RUN_ID task_id=$TASK_ID request_id=$REQUEST_ID status=$TASK_STATUS attempt=1"
+
+      - name: Verify G4 MP4 and G5 handoff
+        id: verify_video
+        if: steps.render.outcome == 'success'
+        run: |
+          test -s "$STATE_DIR/E01-G04-i2v.mp4"
+          test -s "$STATE_DIR/video-render.json"
+          test -s "$STATE_DIR/video-ledger.json"
+          test -s "$STATE_DIR/continuity/E01-G04/E01-G04_end.png"
+          test -s "$STATE_DIR/continuity/E01-G04/E01-G04_end.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          state = Path(os.environ['STATE_DIR'])
+          report = json.loads((state / 'video-render.json').read_text(encoding='utf-8'))
+          ledger = json.loads((state / 'video-ledger.json').read_text(encoding='utf-8'))
+          end = json.loads((state / 'continuity/E01-G04/E01-G04_end.json').read_text(encoding='utf-8'))
+          operations = list((ledger.get('operations') or {}).values())
+          assert len(operations) == 1 and operations[0]['status'] == 'succeeded'
+          assert report['valid'] is True
+          assert report['status'] == 'succeeded_awaiting_human_review'
+          assert report['model'] == 'happyhorse-1.1-i2v'
+          assert report['provider_submissions_this_run'] == 1
+          assert report['audio_stream_present'] is True
+          assert report['duration_seconds'] + 0.08 >= 10
+          assert end['source_segment_id'] == 'E01-G04'
+          assert end['derived_for_next_segment_id'] == 'E01-G05'
+          assert end['source_video_sha256'] == report['output_sha256']
+          PY
+
+      - name: Upload G4 result and recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RESULT_ARTIFACT }}
+          path: ${{ env.STATE_DIR }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Report G4 result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
+            -f "body=E01_G04_ONE_SHOT_RESULT: run_id=$GITHUB_RUN_ID keyframe=${{ steps.keyframe.outcome }} render=${{ steps.render.outcome }} verify=${{ steps.verify_video.outcome }} artifact=$RESULT_ARTIFACT"
+
+      - name: Fail unless both paid stages and verification succeeded
+        if: >-
+          steps.keyframe.outcome != 'success' ||
+          steps.render.outcome != 'success' ||
+          steps.verify_video.outcome != 'success'
+        run: exit 1
