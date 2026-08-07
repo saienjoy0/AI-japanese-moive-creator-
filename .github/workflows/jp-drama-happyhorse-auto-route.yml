@@ -1,0 +1,88 @@
+name: Japanese Drama HappyHorse Auto Route
+
+on:
+  pull_request:
+    paths:
+      - "src/apps/jp_drama/workflows/render_happyhorse_segment_auto_route_canary.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_segment_directed_continuity_canary.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_e01_g04_first_frame_canary.py"
+      - "tests/test_jp_drama_e01_g04_first_frame.py"
+      - ".github/workflows/jp-drama-happyhorse-auto-route.yml"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    paths:
+      - "src/apps/jp_drama/workflows/render_happyhorse_segment_auto_route_canary.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_segment_directed_continuity_canary.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_e01_g04_first_frame_canary.py"
+      - "tests/test_jp_drama_e01_g04_first_frame.py"
+      - ".github/workflows/jp-drama-happyhorse-auto-route.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Zero-call continuity-group routing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-docker.txt
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docker.txt
+          python -m pip install "pytest>=8,<10"
+
+      - name: Compile permanent routing boundary
+        run: |
+          python -m compileall -q \
+            src/apps/jp_drama/workflows/render_happyhorse_segment_auto_route_canary.py \
+            src/apps/jp_drama/workflows/render_happyhorse_segment_directed_continuity_canary.py \
+            src/apps/jp_drama/workflows/render_happyhorse_e01_g04_first_frame_canary.py
+
+      - name: Test episode start, same group, and scene boundary
+        env:
+          DASHSCOPE_API_KEY: ""
+          MINIMAX_API_KEY: ""
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ""
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ""
+        run: |
+          python -m pytest -q tests/test_jp_drama_e01_g04_first_frame.py
+
+      - name: Verify provider-free contract
+        run: |
+          test -z "${DASHSCOPE_API_KEY:-}"
+          test -z "${MINIMAX_API_KEY:-}"
+          python - <<'PY'
+          from pathlib import Path
+
+          router = Path(
+              'src/apps/jp_drama/workflows/'
+              'render_happyhorse_segment_auto_route_canary.py'
+          ).read_text(encoding='utf-8')
+          required = [
+              'continuity_group_boundary',
+              'same_continuity_group',
+              'episode_start',
+              'input_mode="first_frame"',
+              'input_mode="references"',
+              'resolve_previous_continuity',
+              'requires the verified end frame',
+              'starts a new continuity group',
+              'auto_route',
+          ]
+          for item in required:
+              assert item in router, item
+          assert 'requests.post' not in router
+          assert 'dashscope.Generation.call' not in router
+          PY

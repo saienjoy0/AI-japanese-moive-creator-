@@ -96,7 +96,7 @@ def test_g3_direction_pins_anatomical_right_pocket_and_single_action() -> None:
 
 
 def test_unreviewed_segment_gets_no_specific_direction() -> None:
-    assert append_segment_direction("base", segment_id="E01-G04") == "base"
+    assert append_segment_direction("base", segment_id="E01-G05") == "base"
 
 
 def test_continuity_frame_is_opening_anchor_not_frozen_composition(
