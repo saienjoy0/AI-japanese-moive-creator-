@@ -47,7 +47,20 @@ Treat that as a request to load and follow:
 
 `.codex/workflows/lumenx-build.md`
 
-This repository does not rely on native slash commands in Codex. The strings `/lumenx-git-publish`, `/lumenx-build`, and `/lumenx-model-onboarding` are textual aliases for the workflows above.
+When the user asks to do any of the following for a Japanese-drama segment:
+
+- prepare, register, preflight, generate, review, or continue a segment such as `E01-G04`
+- create or register a keyframe for HappyHorse, Wan, MiniMax H3, or another video route
+- use a previous segment end frame for continuity
+- run a paid video-generation Action or report whether its API was called
+- provide a generated segment MP4, artifact, or next-segment continuity frame
+- use `/jp-drama-segment-production`
+
+Treat that as a request to load and follow:
+
+`.codex/workflows/jp-drama-segment-production.md`
+
+This repository does not rely on native slash commands in Codex. The strings `/lumenx-git-publish`, `/lumenx-build`, `/lumenx-model-onboarding`, and `/jp-drama-segment-production` are textual aliases for the workflows above.
 
 ## Workflow Files
 
@@ -57,6 +70,7 @@ This repository does not rely on native slash commands in Codex. The strings `/l
 - `.codex/workflows/lumenx-git-publish.md` is the Codex workflow mirror for the same project process.
 - `.codex/workflows/lumenx-build.md` is the Codex workflow mirror for the desktop build process.
 - `.codex/workflows/lumenx-model-onboarding.md` is the Codex workflow mirror for model onboarding, catalog updates, and verification.
+- `.codex/workflows/jp-drama-segment-production.md` is the evidence-based Japanese-drama segment execution and reporting workflow.
 
 If both Claude and Codex guidance exist, preserve behavior parity unless the user asks for divergence.
 
