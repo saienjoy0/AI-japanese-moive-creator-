@@ -46,14 +46,49 @@ def append_g4_scene_cut_reference_prompt(
     )
 
 
+def append_g4_scene_cut_direction(prompt: str, *, segment_id: str) -> str:
+    """Keep the reviewed G4 timing while removing the obsolete first-frame claim."""
+
+    rewritten = directed.append_segment_direction(prompt, segment_id=segment_id)
+    if segment_id != "E01-G04":
+        return rewritten
+    old = "0.0-1.0s begin exactly from the approved E01-G04 first frame:"
+    new = (
+        "0.0-1.0s begin directly in the approved S02 school corridor using "
+        "Images 1-7 as the identity, location, and prop references:"
+    )
+    if old not in rewritten:
+        raise G4SceneCutError("could not replace obsolete E01-G04 first-frame direction")
+    return rewritten.replace(old, new, 1)
+
+
 @contextmanager
 def install_g4_scene_cut_reference_policy() -> Iterator[None]:
-    original = directed.append_directed_continuity_prompt
+    original_continuity = directed.append_directed_continuity_prompt
+    original_direction = directed.append_segment_direction
+
+    def scene_cut_direction(prompt: str, *, segment_id: str) -> str:
+        rewritten = original_direction(prompt, segment_id=segment_id)
+        if segment_id != "E01-G04":
+            return rewritten
+        old = "0.0-1.0s begin exactly from the approved E01-G04 first frame:"
+        new = (
+            "0.0-1.0s begin directly in the approved S02 school corridor using "
+            "Images 1-7 as the identity, location, and prop references:"
+        )
+        if old not in rewritten:
+            raise G4SceneCutError(
+                "could not replace obsolete E01-G04 first-frame direction"
+            )
+        return rewritten.replace(old, new, 1)
+
     directed.append_directed_continuity_prompt = append_g4_scene_cut_reference_prompt
+    directed.append_segment_direction = scene_cut_direction
     try:
         yield
     finally:
-        directed.append_directed_continuity_prompt = original
+        directed.append_directed_continuity_prompt = original_continuity
+        directed.append_segment_direction = original_direction
 
 
 def _option_value(arguments: list[str], option: str) -> str | None:
@@ -74,7 +109,9 @@ def main(argv: list[str] | None = None) -> int:
         if segment_id != "E01-G04":
             raise G4SceneCutError("this wrapper is pinned to E01-G04")
         if input_mode != "references":
-            raise G4SceneCutError("E01-G04 scene-cut wrapper requires --input-mode references")
+            raise G4SceneCutError(
+                "E01-G04 scene-cut wrapper requires --input-mode references"
+            )
         with install_g4_scene_cut_reference_policy():
             return directed.main(arguments)
     except G4SceneCutError as exc:
