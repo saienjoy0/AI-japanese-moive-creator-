@@ -25,6 +25,29 @@ class G5SelectedR2VError(RuntimeError):
 _FULL_G5_SUBJECTS = ("C01", "C02", "C03", "C90", "C91", "S02", "P02")
 _SELECTED_G5_SUBJECTS = ("C02", "C03", "S02", "P02")
 _EXPECTED_DIALOGUE = "先生(off_screen_then_on_screen): お入り"
+_G5_DIRECTION_TEXT = (
+    "Directed shot progression for E01-G05: "
+    "0.0-1.2s begin from Image 5, the exact final frame of E01-G04: C01 remains tense "
+    "in the same S02 corridor with no identity, costume, lighting, or location jump. "
+    "C02 may remain nearby as a secondary character using Image 1; C90 and C91 are "
+    "generic soft-focus background students only and need no master-image identity. "
+    "1.2-3.8s use one controlled tilt or downward reframe toward C01's anatomical right "
+    "coat pocket and the wooden floor. Exactly two P02 solid paint cakes from Image 4, "
+    "one indigo and one magenta, slip out of C01's anatomical right coat pocket together "
+    "and fall naturally to the floor. They must visibly originate from C01's pocket; "
+    "no hand places them, no extra paint appears, and neither paint changes color or form. "
+    "3.8-5.5s hold long enough to make exactly two P02 clearly visible on the floor while "
+    "C01 realizes he has been exposed. C02 may react silently; nobody touches or picks up "
+    "either paint. 5.5-7.2s the teacher-room door in the same S02 corridor opens naturally "
+    "and C03 enters the doorway using Image 2, without teleporting or changing the corridor. "
+    "7.2-8.5s C03 says exactly: お入り. Only C03 moves the mouth for this one line; C01, "
+    "C02, and all background students keep their mouths closed. Use a calm, restrained "
+    "teacher delivery, not anger or shouting. 8.5-10.0s hold the consequence: C01 is "
+    "visibly isolated, exactly two P02 remain on the floor, and C03 remains in the doorway. "
+    "Final state must be exactly two P02 on the floor and C03 at the doorway. Do not return "
+    "to the classroom, do not show P01, do not put P02 back in a pocket or box, do not let "
+    "anyone pick them up, and do not add text, subtitles, logos, or extra dialogue."
+)
 
 
 def build_g5_selected_manifest(prepared, plan, bundle, *, segment_id: str):
@@ -124,29 +147,7 @@ def append_g5_direction(prompt: str, *, segment_id: str) -> str:
     rewritten = directed.append_segment_direction(prompt, segment_id=segment_id)
     if segment_id != "E01-G05":
         return rewritten
-    return rewritten + "\n" + (
-        "Directed shot progression for E01-G05: "
-        "0.0-1.2s begin from Image 5, the exact final frame of E01-G04: C01 remains tense "
-        "in the same S02 corridor with no identity, costume, lighting, or location jump. "
-        "C02 may remain nearby as a secondary character using Image 1; C90 and C91 are "
-        "generic soft-focus background students only and need no master-image identity. "
-        "1.2-3.8s use one controlled tilt or downward reframe toward C01's anatomical right "
-        "coat pocket and the wooden floor. Exactly two P02 solid paint cakes from Image 4, "
-        "one indigo and one magenta, slip out of C01's anatomical right coat pocket together "
-        "and fall naturally to the floor. They must visibly originate from C01's pocket; "
-        "no hand places them, no extra paint appears, and neither paint changes color or form. "
-        "3.8-5.5s hold long enough to make exactly two P02 clearly visible on the floor while "
-        "C01 realizes he has been exposed. C02 may react silently; nobody touches or picks up "
-        "either paint. 5.5-7.2s the teacher-room door in the same S02 corridor opens naturally "
-        "and C03 enters the doorway using Image 2, without teleporting or changing the corridor. "
-        "7.2-8.5s C03 says exactly: お入り. Only C03 moves the mouth for this one line; C01, "
-        "C02, and all background students keep their mouths closed. Use a calm, restrained "
-        "teacher delivery, not anger or shouting. 8.5-10.0s hold the consequence: C01 is "
-        "visibly isolated, exactly two P02 remain on the floor, and C03 remains in the doorway. "
-        "Final state must be exactly two P02 on the floor and C03 at the doorway. Do not return "
-        "to the classroom, do not show P01, do not put P02 back in a pocket or box, do not let "
-        "anyone pick them up, and do not add text, subtitles, logos, or extra dialogue."
-    )
+    return rewritten + "\n" + _G5_DIRECTION_TEXT
 
 
 @contextmanager
@@ -164,9 +165,15 @@ def install_g5_selected_policy() -> Iterator[None]:
             segment_id=segment_id,
         )
 
+    def installed_g5_direction(prompt: str, *, segment_id: str) -> str:
+        rewritten = original_direction(prompt, segment_id=segment_id)
+        if segment_id != "E01-G05":
+            return rewritten
+        return rewritten + "\n" + _G5_DIRECTION_TEXT
+
     base.build_wan_master_reference_manifest = selected_builder
     directed.append_directed_continuity_prompt = append_g5_continuity_prompt
-    directed.append_segment_direction = append_g5_direction
+    directed.append_segment_direction = installed_g5_direction
     directed.rewrite_dialogue_delivery = rewrite_g5_dialogue_delivery
     try:
         yield
