@@ -8,7 +8,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..assets.bundle import prepared_content_digest
 from ..generation.compiler import segment_to_generation_spec
 from ..generation.models import GenerationPlanEpisode, GenerationSegment
 from ..preparation.models import PreparedEpisode
@@ -16,6 +15,7 @@ from .minimax_h3_adapter import MiniMaxH3Adapter
 from .minimax_h3_executor import authoritative_h3_cost_usd
 from .minimax_h3_models import H3ReferenceBundle, H3VideoGenerationRequest
 from .provider_core import PreparedProviderRequest, ReferenceAsset, ShotGenerationSpec
+from .segment_canary import prepared_content_digest
 
 
 class MiniMaxH3CanaryError(ValueError):
