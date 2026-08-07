@@ -1,10 +1,10 @@
-name: Japanese Drama E01-G04 Approved I2V
+name: Japanese Drama E01-G04 Approved R2V
 
 on:
   pull_request:
     paths:
       - ".github/workflows/jp-drama-e01-g04-first-frame-i2v.yml"
-      - "tests/test_jp_drama_e01_g04_first_frame.py"
+      - "src/apps/jp_drama/workflows/render_happyhorse_e01_g04_r2v_scene_cut_canary.py"
   issue_comment:
     types: [created]
 
@@ -14,7 +14,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: jp-drama-e01-g04-approved-i2v
+  group: jp-drama-e01-g04-approved-r2v
   cancel-in-progress: false
 
 env:
@@ -28,13 +28,13 @@ env:
   G3_FRAME_SHA256: sha256:28b9c6993dc04b0d7da52e4adfbb26a90b519fc9f24c8146c876cdc04756e8ae
   PROVIDER_CONFIG: examples/jp_drama/dashscope_happyhorse_live_providers.json
   SEGMENT_ID: E01-G04
-  RESULT_ARTIFACT: happyhorse-e01-g04-approved-i2v-10s-result
+  RESULT_ARTIFACT: happyhorse-e01-g04-approved-r2v-10s-result
 
 jobs:
   contract-test:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -50,7 +50,7 @@ jobs:
           python -m pip install -r requirements-docker.txt
           python -m pip install "pytest>=8,<10" "pillow==12.2.0"
 
-      - name: Download the exact successful G3 result
+      - name: Download exact successful G3 result
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.G3_ARTIFACT }}
@@ -59,19 +59,43 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.G3_RUN_ID }}
 
-      - name: Verify the existing G3 continuity handoff
+      - name: Download immutable episode inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SEALED_ARTIFACT }}
+          path: input/sealed
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SEALED_RUN_ID }}
+
+      - name: Locate and verify immutable inputs
         run: |
           set -euo pipefail
+          PREPARED="$(find input/sealed -type f -path '*/input/prepared_episode.json' -print -quit)"
+          PLAN="$(find input/sealed -type f -path '*/input/generation_plan_episode.json' -print -quit)"
+          BUNDLE="$(find input/sealed -type f -path '*/input/asset_bundle_masters_approved.json' -print -quit)"
+          PREVIOUS_VIDEO="$(find input/g3 -type f -name 'E01-G03-r2v.mp4' -print -quit)"
+          PREVIOUS_REPORT="$(find input/g3 -type f -name 'render.json' -print -quit)"
           FRAME="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.png' -print -quit)"
           META="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.json' -print -quit)"
-          VIDEO="$(find input/g3 -type f -name 'E01-G03-r2v.mp4' -print -quit)"
-          RENDER="$(find input/g3 -type f -name 'render.json' -print -quit)"
-          for value in "$FRAME" "$META" "$VIDEO" "$RENDER"; do
+          for value in "$PREPARED" "$PLAN" "$BUNDLE" "$PREVIOUS_VIDEO" "$PREVIOUS_REPORT" "$FRAME" "$META"; do
             test -n "$value" && test -s "$value"
           done
           echo "${G3_FRAME_SHA256#sha256:}  $FRAME" | sha256sum --check --strict
-          echo "${G3_VIDEO_SHA256#sha256:}  $VIDEO" | sha256sum --check --strict
-          FRAME="$FRAME" META="$META" RENDER="$RENDER" python - <<'PY'
+          echo "${G3_VIDEO_SHA256#sha256:}  $PREVIOUS_VIDEO" | sha256sum --check --strict
+          STATE_DIR="$RUNNER_TEMP/e01-g04-r2v-zero-call"
+          mkdir -p "$STATE_DIR/continuity"
+          {
+            echo "PREPARED=$PREPARED"
+            echo "PLAN=$PLAN"
+            echo "BUNDLE=$BUNDLE"
+            echo "PREVIOUS_VIDEO=$PREVIOUS_VIDEO"
+            echo "PREVIOUS_REPORT=$PREVIOUS_REPORT"
+            echo "FRAME=$FRAME"
+            echo "META=$META"
+            echo "STATE_DIR=$STATE_DIR"
+          } >> "$GITHUB_ENV"
+          FRAME="$FRAME" META="$META" PREVIOUS_REPORT="$PREVIOUS_REPORT" python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -79,7 +103,7 @@ jobs:
 
           frame = Path(os.environ['FRAME'])
           meta = json.loads(Path(os.environ['META']).read_text(encoding='utf-8'))
-          render = json.loads(Path(os.environ['RENDER']).read_text(encoding='utf-8'))
+          report = json.loads(Path(os.environ['PREVIOUS_REPORT']).read_text(encoding='utf-8'))
           with Image.open(frame) as image:
               assert image.format == 'PNG'
               assert image.size == (720, 1280)
@@ -88,18 +112,114 @@ jobs:
           assert meta['derived_for_next_segment_id'] == 'E01-G04'
           assert meta['frame_sha256'] == os.environ['G3_FRAME_SHA256']
           assert meta['source_video_sha256'] == os.environ['G3_VIDEO_SHA256']
-          assert render['valid'] is True
-          assert render['status'] == 'succeeded_awaiting_human_review'
-          assert render['segment_id'] == 'E01-G03'
-          assert render['output_sha256'] == os.environ['G3_VIDEO_SHA256']
-          assert render['provider_submissions_this_run'] == 1
+          assert report['valid'] is True
+          assert report['status'] == 'succeeded_awaiting_human_review'
+          assert report['segment_id'] == 'E01-G03'
+          assert report['output_sha256'] == os.environ['G3_VIDEO_SHA256']
+          assert report['provider_submissions_this_run'] == 1
           PY
 
-      - name: Verify G4 route contract
+      - name: Compile G4 scene-cut wrapper
+        run: |
+          python -m compileall -q src/apps/jp_drama/workflows/render_happyhorse_e01_g04_r2v_scene_cut_canary.py
+          python - <<'PY'
+          from src.apps.jp_drama.workflows.render_happyhorse_e01_g04_r2v_scene_cut_canary import (
+              append_g4_scene_cut_reference_prompt,
+          )
+          text = append_g4_scene_cut_reference_prompt('base', existing_reference_count=7)
+          assert '[Image 8] is the exact final frame of E01-G03' in text
+          assert 'character-and-state continuity reference' in text
+          assert 'Do not begin from' in text
+          assert 'start in the approved S02 school corridor' in text
+          assert 'opening frame and continuity anchor only' not in text
+          PY
+
+      - name: Run exact zero-call G4 R2V preflight
         env:
           DASHSCOPE_API_KEY: ""
         run: |
-          python -m pytest -q tests/test_jp_drama_e01_g04_first_frame.py
+          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_r2v_scene_cut_canary \
+            --prepared-input "$PREPARED" \
+            --generation-plan "$PLAN" \
+            --segment-id "$SEGMENT_ID" \
+            --asset-bundle "$BUNDLE" \
+            --providers "$PROVIDER_CONFIG" \
+            --output "$STATE_DIR/E01-G04-r2v.mp4" \
+            --input-mode references \
+            --stage preflight \
+            --continuity-frame "$FRAME" \
+            --continuity-frame-metadata "$META" \
+            --resolution 720P \
+            --max-api-calls 1 \
+            --max-cost-cny 6 \
+            --cost-reserve-cny 6 \
+            --report "$STATE_DIR/preflight.json" \
+            --print-report
+
+      - name: Verify actual provider-bound G4 reference set
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from src.apps.jp_drama.rendering.happyhorse11 import HappyHorse11R2VModel
+
+          report = json.loads((Path(os.environ['STATE_DIR']) / 'preflight.json').read_text(encoding='utf-8'))
+          refs = report['references']
+          prompt = report['request']['prompt']
+          expected_subjects = ['C01', 'C02', 'C90', 'C91', 'S02', 'P01', 'P02', 'E01-G03']
+          expected_hashes = [
+              'sha256:ad79e1aa803ac3ae059b3f70f1293fe6c3e01c0fb178a93991193f601628455c',
+              'sha256:74beff4a8a9a8e86000324d64ce3328460812c7e4df1548859650983c458e9c7',
+              'sha256:d2fb350ba579d46c22002ce635c2b8756e61e92027b2e3f5624cfc8a76e6fe6d',
+              'sha256:50f7e262db04aeb6d63b044a2f6ff60463666a7bbde6bb526b68f3ad7ff9d68e',
+              'sha256:68fae03059f001c43aadcf024b0b6efe29af1bec6240f10d4ba586b6a438e9e4',
+              'sha256:aa674d0aaffd7df81d30acf4b45ffa3ade373a5a805fe193786cdc1874fe52eb',
+              'sha256:6eabbf5c85fcb0aea786d0200f1340d3e8bd4d3b6ff8b64a0a4ec60d89c46e20',
+              os.environ['G3_FRAME_SHA256'],
+          ]
+          assert report['valid'] is True
+          assert report['status'] == 'ready_for_single_paid_submission'
+          assert report['segment_id'] == 'E01-G04'
+          assert report['input_mode'] == 'references'
+          assert report['model'] == 'happyhorse-1.1-r2v'
+          assert report['request']['duration'] == 10
+          assert report['request']['ratio'] == '9:16'
+          assert report['provider_submissions_this_run'] == 0
+          assert report['external_api_calls'] == 0
+          assert len(refs) == 8
+          assert [item['subject_id'] for item in refs] == expected_subjects
+          assert [item['sha256'] for item in refs] == expected_hashes
+          assert refs[-1]['role'] == 'continuity_frame'
+          assert report['continuity_frame']['source_segment_id'] == 'E01-G03'
+          assert report['continuity_frame']['sha256'] == os.environ['G3_FRAME_SHA256']
+          assert 'approved E01-G04 first frame' not in prompt
+          assert 'opening frame and continuity anchor only' not in prompt
+          assert 'hard scene cut' in prompt
+          assert 'start in the approved S02 school corridor' in prompt
+          assert 'character-and-state continuity reference' in prompt
+          assert '藍と洋紅がない。休みに教室にいたのは、君だけだ' in prompt
+          assert '僕じゃない' in prompt
+          assert 'Only C02 moves the mouth' in prompt
+          assert 'Only C01 moves the mouth' in prompt
+
+          urls = [f'https://zero-call.invalid/ref-{index}.png' for index in range(1, 9)]
+          payload = HappyHorse11R2VModel.build_request_payload(
+              prompt=prompt,
+              reference_image_urls=urls,
+              resolution='720P',
+              ratio='9:16',
+              duration=10,
+              watermark=False,
+              seed=report['request']['seed'],
+          )
+          assert payload['model'] == 'happyhorse-1.1-r2v'
+          assert len(payload['input']['media']) == 8
+          assert [item['type'] for item in payload['input']['media']] == ['reference_image'] * 8
+          assert [item['url'] for item in payload['input']['media']] == urls
+          assert 'first_frame' not in json.dumps(payload, ensure_ascii=False)
+          print('G4 zero-call provider payload: 8 reference_image entries verified')
+          PY
 
   render-g4:
     if: >-
@@ -108,23 +228,17 @@ jobs:
       github.event.issue.number == 37 &&
       github.event.issue.pull_request == null &&
       github.event.comment.user.login == github.repository_owner &&
-      github.event.comment.body == 'RUN_ONE_BUNCH_E01_G04_APPROVED_I2V_ONCE'
+      github.event.comment.body == 'RUN_ONE_BUNCH_E01_G04_APPROVED_R2V_ONCE'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Require the first workflow attempt
+      - name: Require first workflow attempt
         run: test "$GITHUB_RUN_ATTEMPT" = "1"
 
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
-
-      - name: Initialize recovery state
-        run: |
-          STATE_DIR="$RUNNER_TEMP/e01-g04-approved-i2v"
-          mkdir -p "$STATE_DIR/input" "$STATE_DIR/continuity"
-          echo "STATE_DIR=$STATE_DIR" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -140,7 +254,7 @@ jobs:
           python -m pip install -r requirements-docker.txt
           python -m pip install "pillow==12.2.0"
 
-      - name: Require and verify the Beijing API key without creating a video task
+      - name: Require and verify Beijing R2V API key without creating a video task
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
@@ -149,11 +263,11 @@ jobs:
           HTTP_CODE="$(curl --silent --show-error --output "$RUNNER_TEMP/auth.json" --write-out '%{http_code}' \
             --get 'https://dashscope.aliyuncs.com/api/v1/uploads' \
             --data-urlencode 'action=getPolicy' \
-            --data-urlencode 'model=happyhorse-1.1-i2v' \
+            --data-urlencode 'model=happyhorse-1.1-r2v' \
             --header "Authorization: Bearer $DASHSCOPE_API_KEY")"
           test "$HTTP_CODE" = "200"
 
-      - name: Download the exact successful G3 result
+      - name: Download exact successful G3 result
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.G3_ARTIFACT }}
@@ -161,42 +275,6 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ env.G3_RUN_ID }}
-
-      - name: Reuse and verify the existing G3 continuity frame
-        run: |
-          set -euo pipefail
-          FRAME="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.png' -print -quit)"
-          META="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.json' -print -quit)"
-          VIDEO="$(find input/g3 -type f -name 'E01-G03-r2v.mp4' -print -quit)"
-          RENDER="$(find input/g3 -type f -name 'render.json' -print -quit)"
-          for value in "$FRAME" "$META" "$VIDEO" "$RENDER"; do
-            test -n "$value" && test -s "$value"
-          done
-          echo "${G3_FRAME_SHA256#sha256:}  $FRAME" | sha256sum --check --strict
-          echo "${G3_VIDEO_SHA256#sha256:}  $VIDEO" | sha256sum --check --strict
-          cp "$FRAME" "$STATE_DIR/E01-G04-first-frame.png"
-          FRAME="$STATE_DIR/E01-G04-first-frame.png" META="$META" RENDER="$RENDER" python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          from PIL import Image
-
-          frame = Path(os.environ['FRAME'])
-          meta = json.loads(Path(os.environ['META']).read_text(encoding='utf-8'))
-          render = json.loads(Path(os.environ['RENDER']).read_text(encoding='utf-8'))
-          with Image.open(frame) as image:
-              assert image.format == 'PNG'
-              assert image.size == (720, 1280)
-          assert meta['source_segment_id'] == 'E01-G03'
-          assert meta['derived_for_next_segment_id'] == 'E01-G04'
-          assert meta['frame_sha256'] == os.environ['G3_FRAME_SHA256']
-          assert meta['source_video_sha256'] == os.environ['G3_VIDEO_SHA256']
-          assert render['valid'] is True
-          assert render['segment_id'] == 'E01-G03'
-          assert render['output_sha256'] == os.environ['G3_VIDEO_SHA256']
-          PY
-          echo "APPROVED_FRAME=$STATE_DIR/E01-G04-first-frame.png" >> "$GITHUB_ENV"
-          echo "APPROVED_FRAME_SHA256=${G3_FRAME_SHA256#sha256:}" >> "$GITHUB_ENV"
 
       - name: Download immutable episode inputs
         uses: actions/download-artifact@v4
@@ -207,152 +285,87 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.SEALED_RUN_ID }}
 
-      - name: Locate immutable inputs
+      - name: Locate and verify exact G4 inputs
         run: |
           set -euo pipefail
           PREPARED="$(find input/sealed -type f -path '*/input/prepared_episode.json' -print -quit)"
           PLAN="$(find input/sealed -type f -path '*/input/generation_plan_episode.json' -print -quit)"
-          SOURCE_BUNDLE="$(find input/sealed -type f -path '*/input/asset_bundle_masters_approved.json' -print -quit)"
-          for value in "$PREPARED" "$PLAN" "$SOURCE_BUNDLE"; do
+          BUNDLE="$(find input/sealed -type f -path '*/input/asset_bundle_masters_approved.json' -print -quit)"
+          PREVIOUS_VIDEO="$(find input/g3 -type f -name 'E01-G03-r2v.mp4' -print -quit)"
+          PREVIOUS_REPORT="$(find input/g3 -type f -name 'render.json' -print -quit)"
+          FRAME="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.png' -print -quit)"
+          META="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.json' -print -quit)"
+          for value in "$PREPARED" "$PLAN" "$BUNDLE" "$PREVIOUS_VIDEO" "$PREVIOUS_REPORT" "$FRAME" "$META"; do
             test -n "$value" && test -s "$value"
           done
-          cp "$PREPARED" "$STATE_DIR/input/prepared_episode.json"
-          cp "$PLAN" "$STATE_DIR/input/generation_plan_episode.json"
-          cp "$SOURCE_BUNDLE" "$STATE_DIR/input/asset_bundle_masters_approved.json"
+          echo "${G3_FRAME_SHA256#sha256:}  $FRAME" | sha256sum --check --strict
+          echo "${G3_VIDEO_SHA256#sha256:}  $PREVIOUS_VIDEO" | sha256sum --check --strict
+          STATE_DIR="$RUNNER_TEMP/e01-g04-approved-r2v"
+          mkdir -p "$STATE_DIR/continuity"
           {
-            echo "PREPARED=$STATE_DIR/input/prepared_episode.json"
-            echo "PLAN=$STATE_DIR/input/generation_plan_episode.json"
-            echo "SOURCE_BUNDLE=$STATE_DIR/input/asset_bundle_masters_approved.json"
+            echo "PREPARED=$PREPARED"
+            echo "PLAN=$PLAN"
+            echo "BUNDLE=$BUNDLE"
+            echo "FRAME=$FRAME"
+            echo "META=$META"
+            echo "STATE_DIR=$STATE_DIR"
           } >> "$GITHUB_ENV"
 
-      - name: Prepare exact G4 master references
+      - name: Run zero-call G4 R2V preflight immediately before payment
         run: |
-          python -m src.apps.jp_drama.workflows.prepare_wan_master_keyframe \
-            --prepared-input "$PREPARED" \
-            --generation-plan "$PLAN" \
-            --asset-bundle "$SOURCE_BUNDLE" \
-            --segment-id "$SEGMENT_ID" \
-            --manifest-output "$STATE_DIR/E01-G04.wan-master-references.json" \
-            --report "$STATE_DIR/master-preflight.json" \
-            --print-report
-
-      - name: Bind approval to the exact G3-derived PNG and G4 master lineage
-        run: |
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          from src.apps.jp_drama.assets.wan_references import load_wan_master_reference_manifest
-          from src.apps.jp_drama.rendering.approval import create_approval_manifest
-          state = Path(os.environ['STATE_DIR'])
-          master = load_wan_master_reference_manifest(state / 'E01-G04.wan-master-references.json')
-          assert len(master.references) == 7
-          create_approval_manifest(
-              shot_id='E01-G04',
-              asset_path=Path(os.environ['APPROVED_FRAME']),
-              generated_by='happyhorse/continuity-extractor',
-              operation_id='run:31114790928:E01-G03:end-frame',
-              output_path=state / 'E01-G04-first-frame.approval.json',
-              master_reference_manifest_digest=master.content_digest,
-              master_reference_asset_ids=master.asset_ids,
-              master_reference_asset_hashes=master.asset_hashes,
-          )
-          PY
-
-      - name: Register the approved first frame in a temporary bundle
-        run: |
-          python -m src.apps.jp_drama.workflows.register_wan_master_keyframe \
-            --prepared-input "$PREPARED" \
-            --generation-plan "$PLAN" \
-            --asset-bundle "$SOURCE_BUNDLE" \
-            --master-reference-manifest "$STATE_DIR/E01-G04.wan-master-references.json" \
-            --approval-manifest "$STATE_DIR/E01-G04-first-frame.approval.json" \
-            --segment-id "$SEGMENT_ID" \
-            --approved-by "$GITHUB_REPOSITORY_OWNER" \
-            --output-bundle "$STATE_DIR/asset_bundle_with_E01-G04_first_frame.json" \
-            --report "$STATE_DIR/first-frame-registration.json" \
-            --print-report
-
-      - name: Verify registered PNG identity
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          bundle = json.loads((Path(os.environ['STATE_DIR']) / 'asset_bundle_with_E01-G04_first_frame.json').read_text(encoding='utf-8'))
-          matches = [item for item in bundle['assets'] if item['asset_id'] == 'ref_first_E01-G04']
-          assert len(matches) == 1
-          item = matches[0]
-          assert item['approval_status'] == 'approved'
-          assert item['asset_sha256'] == 'sha256:' + os.environ['APPROVED_FRAME_SHA256']
-          assert (item['width'], item['height']) == (720, 1280)
-          PY
-
-      - name: Run zero-call G4 I2V preflight immediately before payment
-        run: |
-          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_first_frame_canary \
+          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_r2v_scene_cut_canary \
             --prepared-input "$PREPARED" \
             --generation-plan "$PLAN" \
             --segment-id "$SEGMENT_ID" \
-            --asset-bundle "$STATE_DIR/asset_bundle_with_E01-G04_first_frame.json" \
+            --asset-bundle "$BUNDLE" \
             --providers "$PROVIDER_CONFIG" \
-            --output "$STATE_DIR/E01-G04-i2v.mp4" \
-            --input-mode first_frame \
+            --output "$STATE_DIR/E01-G04-r2v.mp4" \
+            --input-mode references \
             --stage preflight \
-            --continuity-dir "$STATE_DIR/continuity" \
+            --continuity-frame "$FRAME" \
+            --continuity-frame-metadata "$META" \
             --resolution 720P \
             --max-api-calls 1 \
             --max-cost-cny 6 \
             --cost-reserve-cny 6 \
-            --report "$STATE_DIR/video-preflight.json" \
+            --report "$STATE_DIR/preflight.json" \
             --print-report
 
-      - name: Verify exact G4 request and export fingerprint
+      - name: Verify exact paid request and export fingerprint
         run: |
           python - <<'PY' >> "$GITHUB_ENV"
           import json
           import os
           from pathlib import Path
-          report = json.loads((Path(os.environ['STATE_DIR']) / 'video-preflight.json').read_text(encoding='utf-8'))
-          prompt = report['request']['prompt']
+          report = json.loads((Path(os.environ['STATE_DIR']) / 'preflight.json').read_text(encoding='utf-8'))
+          refs = report['references']
           assert report['valid'] is True
           assert report['status'] == 'ready_for_single_paid_submission'
-          assert report['segment_id'] == 'E01-G04'
-          assert report['input_mode'] == 'first_frame'
-          assert report['model'] == 'happyhorse-1.1-i2v'
-          assert report['request']['duration'] == 10
+          assert report['model'] == 'happyhorse-1.1-r2v'
+          assert report['input_mode'] == 'references'
           assert report['provider_submissions_this_run'] == 0
           assert report['external_api_calls'] == 0
-          assert report['first_frame']['asset_id'] == 'ref_first_E01-G04'
-          assert report['first_frame']['sha256'] == os.environ['G3_FRAME_SHA256']
-          assert 'continuity_frame' not in report
-          assert report['auto_route']['reason'] == 'continuity_group_boundary'
-          assert report['auto_route']['continuity_required'] is False
-          for text in [
-              'hard scene cut',
-              '藍と洋紅がない。休みに教室にいたのは、君だけだ',
-              '僕じゃない',
-              'Only C02 moves the mouth',
-              'Only C01 moves the mouth',
-              'P02 is not visible',
-              'Do not begin from',
-          ]:
-              assert text in prompt, text
+          assert len(refs) == 8
+          assert [item['subject_id'] for item in refs] == ['C01', 'C02', 'C90', 'C91', 'S02', 'P01', 'P02', 'E01-G03']
+          assert refs[-1]['sha256'] == os.environ['G3_FRAME_SHA256']
+          assert 'approved E01-G04 first frame' not in report['request']['prompt']
+          assert 'opening frame and continuity anchor only' not in report['request']['prompt']
           print('VIDEO_FINGERPRINT=' + report['request']['request_fingerprint'])
           PY
 
-      - name: Reserve exactly one approved G4 I2V request
+      - name: Reserve exactly one approved G4 R2V request
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          PREFIX="E01_G04_APPROVED_I2V_RESERVATION:"
+          PREFIX="E01_G04_APPROVED_R2V_RESERVATION:"
           COMMENTS="$(gh api --paginate "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments?per_page=100" | jq -s 'add')"
           EXISTING="$(jq -r --arg p "$PREFIX" '[.[] | select(.body | startswith($p))] | length' <<< "$COMMENTS")"
           test "$EXISTING" = "0"
           gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
-            -f "body=$PREFIX run_id=$GITHUB_RUN_ID fingerprint=$VIDEO_FINGERPRINT image_sha256=$G3_FRAME_SHA256 source_run_id=$G3_RUN_ID attempt=1"
+            -f "body=$PREFIX run_id=$GITHUB_RUN_ID fingerprint=$VIDEO_FINGERPRINT frame_sha256=$G3_FRAME_SHA256 source_run_id=$G3_RUN_ID attempt=1"
 
-      - name: Render exactly one approved G4 I2V task
+      - name: Render exactly one approved G4 R2V task
         id: render
         continue-on-error: true
         env:
@@ -360,16 +373,17 @@ jobs:
           DASHSCOPE_BASE_URL: https://ws-fflq327rfjpr3ob2.cn-beijing.maas.aliyuncs.com
           DASHSCOPE_UPLOAD_BASE_URL: https://dashscope.aliyuncs.com
         run: |
-          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_first_frame_canary \
+          python -m src.apps.jp_drama.workflows.render_happyhorse_e01_g04_r2v_scene_cut_canary \
             --prepared-input "$PREPARED" \
             --generation-plan "$PLAN" \
             --segment-id "$SEGMENT_ID" \
-            --asset-bundle "$STATE_DIR/asset_bundle_with_E01-G04_first_frame.json" \
+            --asset-bundle "$BUNDLE" \
             --providers "$PROVIDER_CONFIG" \
-            --output "$STATE_DIR/E01-G04-i2v.mp4" \
-            --input-mode first_frame \
+            --output "$STATE_DIR/E01-G04-r2v.mp4" \
+            --input-mode references \
             --stage render \
-            --continuity-dir "$STATE_DIR/continuity" \
+            --continuity-frame "$FRAME" \
+            --continuity-frame-metadata "$META" \
             --resolution 720P \
             --max-api-calls 1 \
             --max-cost-cny 6 \
@@ -405,14 +419,14 @@ jobs:
           )"
           IFS=$'\t' read -r TASK_ID REQUEST_ID TASK_STATUS <<< "$VALUES"
           gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
-            -f "body=E01_G04_APPROVED_I2V_TASK_STATE: run_id=$GITHUB_RUN_ID task_id=$TASK_ID request_id=$REQUEST_ID status=$TASK_STATUS attempt=1"
+            -f "body=E01_G04_APPROVED_R2V_TASK_STATE: run_id=$GITHUB_RUN_ID task_id=$TASK_ID request_id=$REQUEST_ID status=$TASK_STATUS attempt=1"
 
-      - name: Verify G4 video and G5 handoff
+      - name: Verify G4 R2V video and G5 handoff
         id: verify
         if: steps.render.outcome == 'success'
         run: |
           set -euo pipefail
-          test -s "$STATE_DIR/E01-G04-i2v.mp4"
+          test -s "$STATE_DIR/E01-G04-r2v.mp4"
           test -s "$STATE_DIR/video-render.json"
           test -s "$STATE_DIR/video-ledger.json"
           test -s "$STATE_DIR/continuity/E01-G04/E01-G04_end.png"
@@ -429,13 +443,14 @@ jobs:
           assert report['valid'] is True
           assert report['status'] == 'succeeded_awaiting_human_review'
           assert report['segment_id'] == 'E01-G04'
-          assert report['model'] == 'happyhorse-1.1-i2v'
-          assert report['input_mode'] == 'first_frame'
+          assert report['model'] == 'happyhorse-1.1-r2v'
+          assert report['input_mode'] == 'references'
           assert report['provider_submissions_this_run'] == 1
           assert report['audio_stream_present'] is True
           assert report['duration_seconds'] + 0.08 >= 10
-          assert report['first_frame']['sha256'] == os.environ['G3_FRAME_SHA256']
-          assert 'continuity_frame' not in report
+          assert len(report['references']) == 8
+          assert report['continuity_frame']['source_segment_id'] == 'E01-G03'
+          assert report['continuity_frame']['sha256'] == os.environ['G3_FRAME_SHA256']
           assert len(operations) == 1
           assert operations[0].get('provider_task_id')
           assert end['source_segment_id'] == 'E01-G04'
@@ -452,13 +467,13 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Report G4 result
+      - name: Report G4 R2V result
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
-            -f "body=E01-G04 approved I2V result
+            -f "body=E01-G04 approved R2V result
 
           - run_id: $GITHUB_RUN_ID
           - render: ${{ steps.render.outcome }}
