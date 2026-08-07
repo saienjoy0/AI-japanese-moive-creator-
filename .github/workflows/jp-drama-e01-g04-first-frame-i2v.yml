@@ -80,8 +80,10 @@ jobs:
           ]
           for item in required:
               assert item in text, item
-          assert '--continuity-frame ' not in text
-          assert '--continuity-frame-metadata ' not in text
+          forbidden_frame = '--continuity' + '-frame '
+          forbidden_metadata = '--continuity' + '-frame-metadata '
+          assert forbidden_frame not in text
+          assert forbidden_metadata not in text
           assert 'cancel-in-progress: false' in text
           PY
 
