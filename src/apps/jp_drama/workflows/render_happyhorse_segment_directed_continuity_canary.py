@@ -11,7 +11,8 @@ prompting rules required by production use:
    freezing the previous composition for the entire clip.
 
 The normal provider ledger, paid-call gate, asset validation, and end-frame
-extraction remain owned by the existing wrappers.
+extraction remain owned by the existing wrappers. Segment-specific reviewed
+directions are shared by both first-frame I2V and same-group continuity R2V.
 """
 
 from __future__ import annotations
@@ -69,6 +70,26 @@ _SEGMENT_DIRECTIONS: dict[str, str] = {
         "At the end exactly two P02 are fully inside C01's anatomical right coat "
         "pocket, P01 is closed on the desk, and both hands are empty. Do not show "
         "discovery, escape, a teacher, C02, or later consequences."
+    ),
+    "E01-G04": (
+        "Directed shot progression for E01-G04: This is a hard scene cut from the "
+        "classroom in E01-G03 into the S02 school corridor. Do not begin from, "
+        "recreate, dissolve from, or visually morph the E01-G03 final frame. "
+        "0.0-1.0s begin exactly from the approved E01-G04 first frame: C01 and C02 "
+        "face each other in the corridor, C90 and C91 remain secondary and softly "
+        "focused, and C02 holds the open wooden P01 so the two missing paint spaces "
+        "are clear. P02 is not visible because both paint cakes remain fully inside "
+        "C01's anatomical right coat pocket. C01's hands are empty. "
+        "1.0-6.5s C02 says exactly: 藍と洋紅がない。休みに教室にいたのは、君だけだ. "
+        "Only C02 moves the mouth for this line; C01, C90, and C91 keep their mouths "
+        "closed. Use restrained concern rather than shouting or villainous anger. "
+        "6.5-8.0s hold a short silent reaction on C01 becoming more cornered, without "
+        "revealing the pocket contents. 8.0-10.0s C01 says exactly: 僕じゃない. "
+        "Only C01 moves the mouth for this reply; C02, C90, and C91 keep their mouths "
+        "closed. Preserve the approved faces, ages, costumes, corridor geometry, "
+        "screen direction, P01 identity, and the exact count of two hidden P02. "
+        "Do not return to the classroom, repeat the theft, show P02 in P01, a hand, "
+        "or on the floor, introduce the teacher, drop the paints, or add text."
     ),
 }
 
