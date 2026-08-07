@@ -1,0 +1,13 @@
+{
+  "approved": true,
+  "approved_at": "2026-08-06T23:09:00Z",
+  "asset_path": "assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png",
+  "asset_sha256": "sha256:5354b074ae257eede70c417ede45a74140d613a376d6d6aba89a1d8994d8a6e9",
+  "generated_by": "openai/image-generation",
+  "height": 800,
+  "mime_type": "image/png",
+  "operation_id": "chatgpt:E01-G04:approved-keyframe-v1",
+  "schema_version": "1.0.0",
+  "shot_id": "E01-G04",
+  "width": 450
+}
