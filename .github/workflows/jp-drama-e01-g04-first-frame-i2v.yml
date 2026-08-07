@@ -7,7 +7,6 @@ on:
       - "src/apps/jp_drama/rendering/minimax_h3_canary.py"
       - "tests/test_jp_drama_import_order.py"
       - "tests/test_jp_drama_e01_g04_first_frame.py"
-      - "assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/**"
   issue_comment:
     types: [created]
 
@@ -25,11 +24,13 @@ env:
   CONTROL_ISSUE: "37"
   SEALED_RUN_ID: "31077418519"
   SEALED_ARTIFACT: happyhorse-e01-g01-r2v-paid-approval
+  G3_RUN_ID: "31114790928"
+  G3_ARTIFACT: happyhorse-e01-g03-r2v-10s-result
+  G3_VIDEO_SHA256: sha256:6d9aa9260d517d27a582652b66d4b77661d2bb3f40ca91bd4fa43afc414f3512
+  G3_FRAME_SHA256: sha256:28b9c6993dc04b0d7da52e4adfbb26a90b519fc9f24c8146c876cdc04756e8ae
   PROVIDER_CONFIG: examples/jp_drama/dashscope_happyhorse_live_providers.json
   SEGMENT_ID: E01-G04
   RESULT_ARTIFACT: happyhorse-e01-g04-approved-i2v-10s-result
-  APPROVED_FRAME: assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png
-  APPROVED_FRAME_SHA256: 5354b074ae257eede70c417ede45a74140d613a376d6d6aba89a1d8994d8a6e9
 
 jobs:
   contract-test:
@@ -51,27 +52,50 @@ jobs:
           python -m pip install -r requirements-docker.txt
           python -m pip install "pytest>=8,<10" "pillow==12.2.0"
 
-      - name: Reconstruct and verify the approved G4 composition
+      - name: Download the exact successful G3 result
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.G3_ARTIFACT }}
+          path: input/g3
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.G3_RUN_ID }}
+
+      - name: Verify the existing G3 continuity handoff
         run: |
           set -euo pipefail
-          SOURCE_JPEG="$RUNNER_TEMP/E01-G04_first.jpg"
-          cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.jpg.b64.part-* \
-            | base64 --decode > "$SOURCE_JPEG"
-          python - <<'PY'
+          FRAME="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.png' -print -quit)"
+          META="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.json' -print -quit)"
+          VIDEO="$(find input/g3 -type f -name 'E01-G03-r2v.mp4' -print -quit)"
+          RENDER="$(find input/g3 -type f -name 'render.json' -print -quit)"
+          for value in "$FRAME" "$META" "$VIDEO" "$RENDER"; do
+            test -n "$value" && test -s "$value"
+          done
+          echo "${G3_FRAME_SHA256#sha256:}  $FRAME" | sha256sum --check --strict
+          echo "${G3_VIDEO_SHA256#sha256:}  $VIDEO" | sha256sum --check --strict
+          FRAME="$FRAME" META="$META" RENDER="$RENDER" python - <<'PY'
+          import json
           import os
+          from pathlib import Path
           from PIL import Image
-          source = os.path.join(os.environ['RUNNER_TEMP'], 'E01-G04_first.jpg')
-          with Image.open(source) as image:
-              assert image.format == 'JPEG'
-              assert image.size == (450, 800)
-              image.convert('RGB').save(
-                  os.environ['APPROVED_FRAME'],
-                  format='PNG',
-                  optimize=True,
-                  compress_level=9,
-              )
+
+          frame = Path(os.environ['FRAME'])
+          meta = json.loads(Path(os.environ['META']).read_text(encoding='utf-8'))
+          render = json.loads(Path(os.environ['RENDER']).read_text(encoding='utf-8'))
+          with Image.open(frame) as image:
+              assert image.format == 'PNG'
+              assert image.size == (720, 1280)
+          assert meta['schema_version'] == 'jp-drama-continuity-frame/v1'
+          assert meta['source_segment_id'] == 'E01-G03'
+          assert meta['derived_for_next_segment_id'] == 'E01-G04'
+          assert meta['frame_sha256'] == os.environ['G3_FRAME_SHA256']
+          assert meta['source_video_sha256'] == os.environ['G3_VIDEO_SHA256']
+          assert render['valid'] is True
+          assert render['status'] == 'succeeded_awaiting_human_review'
+          assert render['segment_id'] == 'E01-G03'
+          assert render['output_sha256'] == os.environ['G3_VIDEO_SHA256']
+          assert render['provider_submissions_this_run'] == 1
           PY
-          echo "$APPROVED_FRAME_SHA256  $APPROVED_FRAME" | sha256sum --check --strict
 
       - name: Verify import order and G4 route contract
         env:
@@ -85,6 +109,8 @@ jobs:
           text = Path('.github/workflows/jp-drama-e01-g04-first-frame-i2v.yml').read_text(encoding='utf-8')
           for required in [
               'RUN_ONE_BUNCH_E01_G04_APPROVED_I2V_ONCE',
+              'G3_RUN_ID: "31114790928"',
+              'continuity/E01-G03/E01-G03_end.png',
               '--input-mode first_frame',
               'happyhorse-1.1-i2v',
               '--max-api-calls 1',
@@ -97,7 +123,8 @@ jobs:
           for forbidden in [
               '--stage keyframe',
               'happyhorse-1.1-r2v',
-              '--continuity-frame ',
+              'base64 --decode',
+              'E01-G04_first.jpg.b64',
               'RUN_ONE_BUNCH_E01_G04_FIRST_FRAME_ONCE',
           ]:
               assert forbidden not in text, forbidden
@@ -156,27 +183,50 @@ jobs:
             --header "Authorization: Bearer $DASHSCOPE_API_KEY")"
           test "$HTTP_CODE" = "200"
 
-      - name: Reconstruct and verify the approved G4 frame
+      - name: Download the exact successful G3 result
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.G3_ARTIFACT }}
+          path: input/g3
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.G3_RUN_ID }}
+
+      - name: Reuse and verify the existing G3 continuity frame
         run: |
           set -euo pipefail
-          SOURCE_JPEG="$RUNNER_TEMP/E01-G04_first.jpg"
-          cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.jpg.b64.part-* \
-            | base64 --decode > "$SOURCE_JPEG"
-          python - <<'PY'
+          FRAME="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.png' -print -quit)"
+          META="$(find input/g3 -type f -path '*/continuity/E01-G03/E01-G03_end.json' -print -quit)"
+          VIDEO="$(find input/g3 -type f -name 'E01-G03-r2v.mp4' -print -quit)"
+          RENDER="$(find input/g3 -type f -name 'render.json' -print -quit)"
+          for value in "$FRAME" "$META" "$VIDEO" "$RENDER"; do
+            test -n "$value" && test -s "$value"
+          done
+          echo "${G3_FRAME_SHA256#sha256:}  $FRAME" | sha256sum --check --strict
+          echo "${G3_VIDEO_SHA256#sha256:}  $VIDEO" | sha256sum --check --strict
+          cp "$FRAME" "$STATE_DIR/E01-G04-first-frame.png"
+          FRAME="$STATE_DIR/E01-G04-first-frame.png" META="$META" RENDER="$RENDER" python - <<'PY'
+          import json
           import os
+          from pathlib import Path
           from PIL import Image
-          source = os.path.join(os.environ['RUNNER_TEMP'], 'E01-G04_first.jpg')
-          with Image.open(source) as image:
-              assert image.format == 'JPEG'
-              assert image.size == (450, 800)
-              image.convert('RGB').save(
-                  os.environ['APPROVED_FRAME'],
-                  format='PNG',
-                  optimize=True,
-                  compress_level=9,
-              )
+
+          frame = Path(os.environ['FRAME'])
+          meta = json.loads(Path(os.environ['META']).read_text(encoding='utf-8'))
+          render = json.loads(Path(os.environ['RENDER']).read_text(encoding='utf-8'))
+          with Image.open(frame) as image:
+              assert image.format == 'PNG'
+              assert image.size == (720, 1280)
+          assert meta['source_segment_id'] == 'E01-G03'
+          assert meta['derived_for_next_segment_id'] == 'E01-G04'
+          assert meta['frame_sha256'] == os.environ['G3_FRAME_SHA256']
+          assert meta['source_video_sha256'] == os.environ['G3_VIDEO_SHA256']
+          assert render['valid'] is True
+          assert render['segment_id'] == 'E01-G03'
+          assert render['output_sha256'] == os.environ['G3_VIDEO_SHA256']
           PY
-          echo "$APPROVED_FRAME_SHA256  $APPROVED_FRAME" | sha256sum --check --strict
+          echo "APPROVED_FRAME=$STATE_DIR/E01-G04-first-frame.png" >> "$GITHUB_ENV"
+          echo "APPROVED_FRAME_SHA256=${G3_FRAME_SHA256#sha256:}" >> "$GITHUB_ENV"
 
       - name: Download immutable episode inputs
         uses: actions/download-artifact@v4
@@ -216,7 +266,7 @@ jobs:
             --report "$STATE_DIR/master-preflight.json" \
             --print-report
 
-      - name: Bind human approval to the exact PNG and master lineage
+      - name: Bind approval to the exact G3-derived PNG and G4 master lineage
         run: |
           python - <<'PY'
           import os
@@ -229,8 +279,8 @@ jobs:
           create_approval_manifest(
               shot_id='E01-G04',
               asset_path=Path(os.environ['APPROVED_FRAME']),
-              generated_by='openai/image-generation',
-              operation_id='chatgpt:E01-G04:approved-keyframe-q95-transport-v1',
+              generated_by='happyhorse/continuity-extractor',
+              operation_id='run:31114790928:E01-G03:end-frame',
               output_path=state / 'E01-G04-first-frame.approval.json',
               master_reference_manifest_digest=master.content_digest,
               master_reference_asset_ids=master.asset_ids,
@@ -264,7 +314,7 @@ jobs:
           item = matches[0]
           assert item['approval_status'] == 'approved'
           assert item['asset_sha256'] == 'sha256:' + os.environ['APPROVED_FRAME_SHA256']
-          assert (item['width'], item['height']) == (450, 800)
+          assert (item['width'], item['height']) == (720, 1280)
           PY
 
       - name: Run zero-call G4 I2V preflight immediately before payment
@@ -303,6 +353,7 @@ jobs:
           assert report['provider_submissions_this_run'] == 0
           assert report['external_api_calls'] == 0
           assert report['first_frame']['asset_id'] == 'ref_first_E01-G04'
+          assert report['first_frame']['sha256'] == os.environ['G3_FRAME_SHA256']
           assert 'continuity_frame' not in report
           assert report['auto_route']['reason'] == 'continuity_group_boundary'
           assert report['auto_route']['continuity_required'] is False
@@ -329,7 +380,7 @@ jobs:
           EXISTING="$(jq -r --arg p "$PREFIX" '[.[] | select(.body | startswith($p))] | length' <<< "$COMMENTS")"
           test "$EXISTING" = "0"
           gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/$CONTROL_ISSUE/comments" \
-            -f "body=$PREFIX run_id=$GITHUB_RUN_ID fingerprint=$VIDEO_FINGERPRINT image_sha256=sha256:$APPROVED_FRAME_SHA256 attempt=1"
+            -f "body=$PREFIX run_id=$GITHUB_RUN_ID fingerprint=$VIDEO_FINGERPRINT image_sha256=$G3_FRAME_SHA256 source_run_id=$G3_RUN_ID attempt=1"
 
       - name: Render exactly one approved G4 I2V task
         id: render
@@ -413,6 +464,7 @@ jobs:
           assert report['provider_submissions_this_run'] == 1
           assert report['audio_stream_present'] is True
           assert report['duration_seconds'] + 0.08 >= 10
+          assert report['first_frame']['sha256'] == os.environ['G3_FRAME_SHA256']
           assert 'continuity_frame' not in report
           assert len(operations) == 1
           assert operations[0].get('provider_task_id')
@@ -442,6 +494,7 @@ jobs:
           - render: ${{ steps.render.outcome }}
           - verify: ${{ steps.verify.outcome }}
           - artifact: $RESULT_ARTIFACT
+          - source_g3_run: $G3_RUN_ID
           - URL: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       - name: Fail if rendering or verification failed
