@@ -1,4 +1,9 @@
-"""Approved asset, voice identity, H3 publication, and Wan references."""
+"""Approved asset, voice identity, Wan references, and optional H3 publication.
+
+The core asset package must remain importable without eagerly loading the H3
+publication stack.  H3 publication symbols are resolved lazily so Wan and
+HappyHorse entry points do not enter the H3/segment-canary import cycle.
+"""
 
 from .bundle import (
     AssetBundleError,
@@ -18,17 +23,6 @@ from .models import (
     AssetReadinessReport,
     VoiceIdentityProfile,
 )
-from .publication import (
-    H3_ASSET_PUBLICATION_SCHEMA_VERSION,
-    H3AssetPublicationError,
-    H3AssetPublicationPreflight,
-    H3PublishedAssetManifest,
-    OSSH3AssetPublisher,
-    PublishedH3Asset,
-    build_h3_asset_publication_preflight_for_episode as build_h3_asset_publication_preflight,
-    materialize_h3_canary_asset_manifest,
-    publish_h3_assets,
-)
 from .wan_first_frame import (
     WanFirstFrameError,
     register_wan_first_frame,
@@ -44,6 +38,32 @@ from .wan_references import (
     verify_wan_master_reference_manifest,
     write_wan_master_reference_manifest,
 )
+
+_H3_EXPORTS = {
+    "H3_ASSET_PUBLICATION_SCHEMA_VERSION",
+    "H3AssetPublicationError",
+    "H3AssetPublicationPreflight",
+    "H3PublishedAssetManifest",
+    "OSSH3AssetPublisher",
+    "PublishedH3Asset",
+    "materialize_h3_canary_asset_manifest",
+    "publish_h3_assets",
+}
+
+
+def __getattr__(name: str):
+    if name == "build_h3_asset_publication_preflight":
+        from .publication import (
+            build_h3_asset_publication_preflight_for_episode,
+        )
+
+        return build_h3_asset_publication_preflight_for_episode
+    if name in _H3_EXPORTS:
+        from . import publication
+
+        return getattr(publication, name)
+    raise AttributeError(name)
+
 
 __all__ = [
     "ASSET_BUNDLE_SCHEMA_VERSION",
