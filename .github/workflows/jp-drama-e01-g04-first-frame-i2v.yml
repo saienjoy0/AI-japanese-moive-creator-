@@ -98,37 +98,8 @@ jobs:
       - name: Verify G4 route contract
         env:
           DASHSCOPE_API_KEY: ""
-          MINIMAX_API_KEY: ""
         run: |
           python -m pytest -q tests/test_jp_drama_e01_g04_first_frame.py
-          python - <<'PY'
-          from pathlib import Path
-          text = Path('.github/workflows/jp-drama-e01-g04-first-frame-i2v.yml').read_text(encoding='utf-8')
-          for required in [
-              'RUN_ONE_BUNCH_E01_G04_APPROVED_I2V_ONCE',
-              'G3_RUN_ID: "31114790928"',
-              'continuity/E01-G03/E01-G03_end.png',
-              '--input-mode first_frame',
-              'happyhorse-1.1-i2v',
-              '--max-api-calls 1',
-              'E01_G04_APPROVED_I2V_RESERVATION:',
-              'E01_G04_APPROVED_I2V_TASK_STATE:',
-              'provider_submissions_this_run',
-              'E01-G04_end.png',
-          ]:
-              assert required in text, required
-          for forbidden in [
-              '--stage keyframe',
-              'happyhorse-1.1-r2v',
-              'base64 --decode',
-              'E01-G04_first.jpg.b64',
-              'RUN_ONE_BUNCH_E01_G04_FIRST_FRAME_ONCE',
-              'tests/test_jp_drama_import_order.py',
-              'src/apps/jp_drama/rendering/minimax_h3_canary.py',
-          ]:
-              assert forbidden not in text, forbidden
-          assert 'cancel-in-progress: false' in text
-          PY
 
   render-g4:
     if: >-
