@@ -78,7 +78,7 @@ jobs:
               'input_mode="references"',
               'resolve_previous_continuity',
               'requires the verified end frame',
-              'must not consume the previous segment',
+              'starts a new continuity group',
               'auto_route',
           ]
           for item in required:
