@@ -1,0 +1,28 @@
+name: Temporary E01 Narration Fetch
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/tmp-e01-narration-fetch.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-narration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch already-generated narration
+        run: |
+          curl --fail --location --retry 3 \
+            "https://v3b.fal.media/files/b/0aa565c0/obiLxnzL1fR1g37MXZBE7_tmpli1f9tr3.mp4" \
+            --output E01_narration_short_source.mp4
+          test -s E01_narration_short_source.mp4
+      - name: Upload narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e01-narration-short-source
+          path: E01_narration_short_source.mp4
+          retention-days: 1
