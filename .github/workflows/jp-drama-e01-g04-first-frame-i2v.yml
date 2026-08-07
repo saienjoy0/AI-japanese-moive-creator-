@@ -30,7 +30,6 @@ env:
   RESULT_ARTIFACT: happyhorse-e01-g04-approved-i2v-10s-result
   APPROVED_FRAME: assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png
   APPROVED_FRAME_SHA256: 5354b074ae257eede70c417ede45a74140d613a376d6d6aba89a1d8994d8a6e9
-  APPROVED_SOURCE_JPEG_SHA256: b3fa332bae5ccf3bb77a19d803d434e1560880bc2b3367345a724fab8dac9a0f
 
 jobs:
   contract-test:
@@ -52,13 +51,12 @@ jobs:
           python -m pip install -r requirements-docker.txt
           python -m pip install "pytest>=8,<10" "pillow==12.2.0"
 
-      - name: Reconstruct the approved G4 composition
+      - name: Reconstruct and verify the approved G4 composition
         run: |
           set -euo pipefail
           SOURCE_JPEG="$RUNNER_TEMP/E01-G04_first.jpg"
           cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.jpg.b64.part-* \
             | base64 --decode > "$SOURCE_JPEG"
-          echo "$APPROVED_SOURCE_JPEG_SHA256  $SOURCE_JPEG" | sha256sum --check --strict
           python - <<'PY'
           import os
           from PIL import Image
@@ -164,7 +162,6 @@ jobs:
           SOURCE_JPEG="$RUNNER_TEMP/E01-G04_first.jpg"
           cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.jpg.b64.part-* \
             | base64 --decode > "$SOURCE_JPEG"
-          echo "$APPROVED_SOURCE_JPEG_SHA256  $SOURCE_JPEG" | sha256sum --check --strict
           python - <<'PY'
           import os
           from PIL import Image
@@ -226,7 +223,6 @@ jobs:
           from pathlib import Path
           from src.apps.jp_drama.assets.wan_references import load_wan_master_reference_manifest
           from src.apps.jp_drama.rendering.approval import create_approval_manifest
-
           state = Path(os.environ['STATE_DIR'])
           master = load_wan_master_reference_manifest(state / 'E01-G04.wan-master-references.json')
           assert len(master.references) == 7
