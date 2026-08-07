@@ -29,7 +29,8 @@ env:
   SEGMENT_ID: E01-G04
   RESULT_ARTIFACT: happyhorse-e01-g04-approved-i2v-10s-result
   APPROVED_FRAME: assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png
-  APPROVED_FRAME_SHA256: bffce86a8368cb618d48449c2e579ce73d69b6f47202a10b0045691eede5fc66
+  APPROVED_FRAME_SHA256: e6fe18d92723e760ed53bce0c210fc2923d5689c82f73c314fbabf7b1d7be577
+  APPROVED_SOURCE_JPEG_SHA256: 230677202615c8927f7964fc1074068fff1a15615a4d7ca3eea6a1ab8b9d27b5
 
 jobs:
   contract-test:
@@ -51,19 +52,28 @@ jobs:
           python -m pip install -r requirements-docker.txt
           python -m pip install "pytest>=8,<10" "pillow==12.2.0"
 
-      - name: Reconstruct the exact approved G4 frame
+      - name: Reconstruct the approved G4 composition
         run: |
           set -euo pipefail
-          cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png.b64.part-* \
-            | base64 --decode > "$APPROVED_FRAME"
-          echo "$APPROVED_FRAME_SHA256  $APPROVED_FRAME" | sha256sum --check --strict
+          SOURCE_JPEG="$RUNNER_TEMP/E01-G04_first.jpg"
+          cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.jpg.b64.part-* \
+            | base64 --decode > "$SOURCE_JPEG"
+          echo "$APPROVED_SOURCE_JPEG_SHA256  $SOURCE_JPEG" | sha256sum --check --strict
           python - <<'PY'
           import os
           from PIL import Image
-          with Image.open(os.environ['APPROVED_FRAME']) as image:
-              assert image.format == 'PNG'
+          source = os.path.join(os.environ['RUNNER_TEMP'], 'E01-G04_first.jpg')
+          with Image.open(source) as image:
+              assert image.format == 'JPEG'
               assert image.size == (941, 1672)
+              image.convert('RGB').save(
+                  os.environ['APPROVED_FRAME'],
+                  format='PNG',
+                  optimize=True,
+                  compress_level=9,
+              )
           PY
+          echo "$APPROVED_FRAME_SHA256  $APPROVED_FRAME" | sha256sum --check --strict
 
       - name: Verify import order and G4 route contract
         env:
@@ -151,16 +161,25 @@ jobs:
       - name: Reconstruct and verify the approved G4 frame
         run: |
           set -euo pipefail
-          cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png.b64.part-* \
-            | base64 --decode > "$APPROVED_FRAME"
-          echo "$APPROVED_FRAME_SHA256  $APPROVED_FRAME" | sha256sum --check --strict
+          SOURCE_JPEG="$RUNNER_TEMP/E01-G04_first.jpg"
+          cat assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.jpg.b64.part-* \
+            | base64 --decode > "$SOURCE_JPEG"
+          echo "$APPROVED_SOURCE_JPEG_SHA256  $SOURCE_JPEG" | sha256sum --check --strict
           python - <<'PY'
           import os
           from PIL import Image
-          with Image.open(os.environ['APPROVED_FRAME']) as image:
-              assert image.format == 'PNG'
+          source = os.path.join(os.environ['RUNNER_TEMP'], 'E01-G04_first.jpg')
+          with Image.open(source) as image:
+              assert image.format == 'JPEG'
               assert image.size == (941, 1672)
+              image.convert('RGB').save(
+                  os.environ['APPROVED_FRAME'],
+                  format='PNG',
+                  optimize=True,
+                  compress_level=9,
+              )
           PY
+          echo "$APPROVED_FRAME_SHA256  $APPROVED_FRAME" | sha256sum --check --strict
 
       - name: Download immutable episode inputs
         uses: actions/download-artifact@v4
@@ -200,7 +219,7 @@ jobs:
             --report "$STATE_DIR/master-preflight.json" \
             --print-report
 
-      - name: Bind human approval to the exact PNG and master lineage
+      - name: Bind human approval to the frame and master lineage
         run: |
           python - <<'PY'
           import os
@@ -215,7 +234,7 @@ jobs:
               shot_id='E01-G04',
               asset_path=Path(os.environ['APPROVED_FRAME']),
               generated_by='openai/image-generation',
-              operation_id='chatgpt:E01-G04:approved-keyframe-original-v1',
+              operation_id='chatgpt:E01-G04:approved-keyframe-q95-transport-v1',
               output_path=state / 'E01-G04-first-frame.approval.json',
               master_reference_manifest_digest=master.content_digest,
               master_reference_asset_ids=master.asset_ids,
