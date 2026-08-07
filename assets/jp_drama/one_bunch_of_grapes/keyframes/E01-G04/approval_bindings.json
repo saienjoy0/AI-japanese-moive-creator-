@@ -1,0 +1,19 @@
+{
+  "approved_by": "saienjoy0",
+  "assets": {
+    "ref_first_E01-G04": {
+      "approval_manifest_path": "assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.approval.json",
+      "path": "assets/jp_drama/one_bunch_of_grapes/keyframes/E01-G04/E01-G04_first.png",
+      "verified_against_asset_ids": [
+        "ref_char_C01_aaf13357f6",
+        "ref_char_C02_aaf13357f6",
+        "ref_char_C90_aaf13357f6",
+        "ref_char_C91_aaf13357f6",
+        "ref_loc_S02_aaf13357f6",
+        "ref_prop_P01_aaf13357f6",
+        "ref_prop_P02_aaf13357f6"
+      ]
+    }
+  },
+  "voices": {}
+}
