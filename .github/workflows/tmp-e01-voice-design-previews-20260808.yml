@@ -28,7 +28,8 @@ jobs:
           if not api_key:
               raise SystemExit("DASHSCOPE_API_KEY missing; stopping before paid calls")
 
-          url = "https://dashscope-intl.aliyuncs.com/api/v1/services/audio/tts/customization"
+          # Existing project key is for China (Beijing), not Singapore.
+          url = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization"
           target_model = "qwen3-tts-vd-2026-01-26"
           voices = [
               {
