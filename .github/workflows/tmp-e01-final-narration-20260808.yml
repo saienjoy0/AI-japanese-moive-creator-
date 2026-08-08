@@ -1,0 +1,93 @@
+name: Temporary E01 Final Narration 20260808
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/tmp-e01-final-narration-20260808.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  synthesize-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+    steps:
+      - name: Install focused dependencies
+        run: python -m pip install --disable-pip-version-check dashscope requests
+
+      - name: Generate E01 narration exactly once
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import requests
+          import dashscope
+
+          api_key = os.environ.get("DASHSCOPE_API_KEY")
+          if not api_key:
+              raise SystemExit("DASHSCOPE_API_KEY is missing; stopping before paid call")
+
+          text = (
+              "僕は小さい時、絵を描くことが好きでした。"
+              "取ってしまったあとも、僕の胸は少しも静まりませんでした。"
+              "もう、言い逃れはできませんでした。"
+          )
+          instructions = (
+              "日本文学の短編を朗読する地の文として読む。"
+              "成人男性が自分の少年時代を静かに回想している声。"
+              "低めで温かく自然、落ち着いているが暗すぎない。"
+              "感情は抑制し、二文目にはごく薄い罪悪感と不安、三文目には観念した静けさを含める。"
+              "広告、ニュース、映画予告、アニメ、ASMRのような誇張は避ける。"
+              "話速は標準よりわずかにゆっくり。三文はそれぞれ独立したナレーションとして読み、文と文の間に約0.8秒の自然な無音を置く。"
+              "語尾を煽らず、息を抜きすぎない。"
+          )
+
+          # Exactly one paid synthesis call. No retry.
+          response = dashscope.MultiModalConversation.call(
+              api_key=api_key,
+              model="qwen3-tts-instruct-flash",
+              text=text,
+              voice="Ethan",
+              language_type="Japanese",
+              instructions=instructions,
+              optimize_instructions=True,
+              stream=False,
+          )
+          if not response or not getattr(response, "output", None):
+              raise RuntimeError(f"Qwen3 TTS empty response: {response}")
+          audio = response.output.audio
+          if audio is None or not getattr(audio, "url", None):
+              raise RuntimeError(f"Qwen3 TTS no audio URL: {response}")
+
+          r = requests.get(audio.url, timeout=30)
+          r.raise_for_status()
+          with open("E01_final_narration_audio", "wb") as f:
+              f.write(r.content)
+
+          meta = {
+              "text": text,
+              "model": "qwen3-tts-instruct-flash",
+              "voice": "Ethan",
+              "language_type": "Japanese",
+              "instructions": instructions,
+              "request_id": getattr(response, "request_id", "") or "",
+              "content_type": r.headers.get("content-type", ""),
+              "bytes": len(r.content),
+          }
+          with open("E01_final_narration_meta.json", "w", encoding="utf-8") as f:
+              json.dump(meta, f, ensure_ascii=False, indent=2)
+          PY
+          test -s E01_final_narration_audio
+
+      - name: Upload narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e01-final-narration-20260808
+          path: |
+            E01_final_narration_audio
+            E01_final_narration_meta.json
+          retention-days: 1
