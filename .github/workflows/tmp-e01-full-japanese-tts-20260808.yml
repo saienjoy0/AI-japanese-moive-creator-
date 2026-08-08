@@ -1,0 +1,146 @@
+name: Temporary E01 Full Japanese TTS 20260808
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/tmp-e01-full-japanese-tts-20260808.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+    steps:
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check dashscope requests
+
+      - name: Generate all E01 Japanese voices
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, requests
+          import dashscope
+
+          api_key = os.environ.get("DASHSCOPE_API_KEY")
+          if not api_key:
+              raise SystemExit("DASHSCOPE_API_KEY missing; stop before paid calls")
+
+          items = [
+              {
+                  "id": "N01",
+                  "voice": "Ethan",
+                  "text": "僕は小さい時、絵を描くことが好きでした。",
+                  "instructions": "日本文学の回想ナレーション。30代から40代の成人男性。少年時代を静かに思い返す。低めで温かく自然。ニュース、広告、アニメ、ASMRのようにしない。標準よりほんの少しゆっくり。"
+              },
+              {
+                  "id": "C01_01",
+                  "voice": "Mochi",
+                  "text": "海は、こんな色じゃない。",
+                  "instructions": "10歳前後の日本人少年の独り言。繊細で内気。目の前の絵に少し不満そうだが大げさに演技しない。自然な子どもの日本語。アニメ声にしない。"
+              },
+              {
+                  "id": "N02",
+                  "voice": "Ethan",
+                  "text": "ジムの絵具。なかでも藍と洋紅は、とても美しく見えました。",
+                  "instructions": "日本文学の回想ナレーション。30代から40代の成人男性。美しかった記憶を静かに語る。温かく抑制的。朗読調だが芝居がかりすぎない。"
+              },
+              {
+                  "id": "C01_02",
+                  "voice": "Mochi",
+                  "text": "あの二色さえあれば……。",
+                  "instructions": "10歳前後の日本人少年の心の声。強い憧れがあるが声は小さめ。欲しさをこらえている。自然で繊細。アニメ調にしない。"
+              },
+              {
+                  "id": "C01_03",
+                  "voice": "Mochi",
+                  "text": "見るだけ……。",
+                  "instructions": "10歳前後の日本人少年の心の声。自分に言い聞かせるように小さく、ためらいながら。短く自然に。"
+              },
+              {
+                  "id": "N03",
+                  "voice": "Ethan",
+                  "text": "取ったあとも、胸は少しも落ち着きませんでした。",
+                  "instructions": "日本文学の回想ナレーション。成人男性。少年時代の罪悪感と不安を静かに振り返る。暗くしすぎず、抑制的で自然。"
+              },
+              {
+                  "id": "C02_01",
+                  "voice": "Moon",
+                  "text": "藍と洋紅がない。休み時間に教室にいたのは、君だけだ。",
+                  "instructions": "主人公より2歳ほど年上の少年。落ち着いた自然な日本語。盗難を確かめるため少し強い口調だが、怒鳴らない。責め立てすぎず事実を突きつける。"
+              },
+              {
+                  "id": "C01_04",
+                  "voice": "Mochi",
+                  "text": "僕じゃない。",
+                  "instructions": "10歳前後の日本人少年。動揺を隠して反射的に否定する。短く、少し震えるが大げさに泣かない。"
+              },
+              {
+                  "id": "N04",
+                  "voice": "Ethan",
+                  "text": "もう、言い逃れはできませんでした。",
+                  "instructions": "日本文学の回想ナレーション。成人男性。静かな諦めと羞恥。感情は抑え、短く淡々と。"
+              },
+              {
+                  "id": "N05",
+                  "voice": "Ethan",
+                  "text": "僕は泣きながら、先生のところへ連れて行かれました。",
+                  "instructions": "日本文学の回想ナレーション。成人男性。少年時代の悲しさを静かに振り返る。センチメンタルにしすぎず自然。"
+              },
+              {
+                  "id": "C03_01",
+                  "voice": "Maia",
+                  "text": "お入り。",
+                  "instructions": "若い女性教師。静かで優しい日本語。生徒を怖がらせない柔らかな一言。上品で自然。アニメ声や接客声にしない。"
+              },
+          ]
+
+          out = pathlib.Path("e01_tts")
+          out.mkdir(exist_ok=True)
+          manifest = []
+
+          for item in items:
+              # One paid call per utterance. No retry loop.
+              response = dashscope.MultiModalConversation.call(
+                  api_key=api_key,
+                  model="qwen3-tts-instruct-flash",
+                  text=item["text"],
+                  voice=item["voice"],
+                  language_type="Japanese",
+                  instructions=item["instructions"],
+                  optimize_instructions=True,
+                  stream=False,
+              )
+              if not response or not getattr(response, "output", None):
+                  raise RuntimeError(f"empty response for {item['id']}: {response}")
+              audio = response.output.audio
+              if audio is None or not getattr(audio, "url", None):
+                  raise RuntimeError(f"no audio URL for {item['id']}: {response}")
+              r = requests.get(audio.url, timeout=30)
+              r.raise_for_status()
+              ct = r.headers.get("content-type", "")
+              ext = ".wav" if "wav" in ct else ".mp3" if "mpeg" in ct or "mp3" in ct else ".bin"
+              path = out / f"{item['id']}{ext}"
+              path.write_bytes(r.content)
+              manifest.append({
+                  **item,
+                  "model": "qwen3-tts-instruct-flash",
+                  "file": str(path),
+                  "bytes": len(r.content),
+                  "content_type": ct,
+                  "request_id": getattr(response, "request_id", "") or "",
+              })
+
+          (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+          test -s e01_tts/manifest.json
+
+      - name: Upload TTS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e01-full-japanese-tts-20260808
+          path: e01_tts
+          retention-days: 1
