@@ -38,3 +38,13 @@ jobs:
           git add .tmp/gemini_algieba_e02_narration/*.ogg
           git commit -m "tmp: add compact E02 Algieba narration" || true
           git push origin HEAD:tmp/gemini-algieba-e02-output-20260810-v1
+
+      - name: Upload compact audio artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e02-algieba-opus-20260810
+          path: |
+            .tmp/gemini_algieba_e02_narration/N01_algieba.ogg
+            .tmp/gemini_algieba_e02_narration/N02_algieba.ogg
+          if-no-files-found: error
+          retention-days: 7
