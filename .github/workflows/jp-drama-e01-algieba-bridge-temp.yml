@@ -1,0 +1,92 @@
+name: Temporary E01 Algieba Bridge Narration
+
+on:
+  push:
+    branches:
+      - "tmp/e01-algieba-bridge-20260810-v1"
+    paths:
+      - ".github/workflows/jp-drama-e01-algieba-bridge-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Gemini SDK
+        run: python -m pip install --quiet --upgrade google-genai
+
+      - name: Generate two bridge narrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GEMINI_API_KEY"
+          rm -rf /tmp/e01-bridge-out
+          mkdir -p /tmp/e01-bridge-out
+          cat > /tmp/synth.py <<'PY'
+          import os, base64, json, wave
+          from pathlib import Path
+          from google import genai
+
+          client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+          out = Path('/tmp/e01-bridge-out')
+          lines = {
+              'N05': '昼休み、教室に残ったのは僕だけでした。',
+              'N06': '僕は、そのまま先生の部屋へ連れて行かれました。',
+          }
+          direction = '''Native Japanese adult male narrator, late 30s to early 40s.
+          He is the grown-up version of a sensitive, inward-looking boy remembering childhood.
+          Warm, smooth, intimate and restrained. Slightly slow, but natural.
+          Do not sound like a newsreader, commercial, anime character, or documentary announcer.
+          Keep sentence endings soft. Do not over-act sadness.
+          Let nostalgia, regret, and the faint warmth of later forgiveness remain subtle.
+          Read compactly enough to fit a short-film narration pause, while keeping natural Japanese rhythm.
+          '''
+          manifest = {}
+          for key, text in lines.items():
+              prompt = f"{direction}\nRead exactly this Japanese narration, without adding words:\n{text}"
+              interaction = client.interactions.create(
+                  model='gemini-3.1-flash-tts-preview',
+                  input=prompt,
+                  response_format={'type': 'audio'},
+                  generation_config={'speech_config': [{'voice': 'Algieba'}]},
+              )
+              pcm = base64.b64decode(interaction.output_audio.data)
+              wav_path = out / f'{key}_algieba.wav'
+              with wave.open(str(wav_path), 'wb') as wf:
+                  wf.setnchannels(1)
+                  wf.setsampwidth(2)
+                  wf.setframerate(24000)
+                  wf.writeframes(pcm)
+              with wave.open(str(wav_path), 'rb') as wf:
+                  duration = wf.getnframes() / wf.getframerate()
+              manifest[key] = {'text': text, 'voice': 'Algieba', 'model': 'gemini-3.1-flash-tts-preview', 'duration_seconds': duration, 'file': wav_path.name}
+          (out/'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          python /tmp/synth.py
+          ffmpeg -y -i /tmp/e01-bridge-out/N05_algieba.wav -c:a libopus -b:a 48k /tmp/e01-bridge-out/N05_algieba.ogg
+          ffmpeg -y -i /tmp/e01-bridge-out/N06_algieba.wav -c:a libopus -b:a 48k /tmp/e01-bridge-out/N06_algieba.ogg
+
+      - name: Persist outputs on temporary branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p .tmp/e01_algieba_bridge_narration
+          cp /tmp/e01-bridge-out/* .tmp/e01_algieba_bridge_narration/
+          git add .tmp/e01_algieba_bridge_narration
+          git commit -m "tmp: add E01 Algieba bridge narration outputs"
+          git push origin HEAD:tmp/e01-algieba-bridge-20260810-v1
