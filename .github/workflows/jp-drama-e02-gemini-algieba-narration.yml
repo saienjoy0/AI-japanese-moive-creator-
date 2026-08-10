@@ -94,7 +94,7 @@ jobs:
 
           python /tmp/synth.py
 
-      - name: Validate and export compact copies
+      - name: Validate WAV outputs
         shell: bash
         run: |
           set -euo pipefail
@@ -112,8 +112,6 @@ jobs:
                       raise SystemExit(f"audio too short: {path}")
                   print(f"{path.name}: {duration:.3f}s")
           PY
-          ffmpeg -y -i out/N05_algieba.wav -c:a libopus -b:a 48k -application voip out/N05_algieba.ogg
-          ffmpeg -y -i out/N06_algieba.wav -c:a libopus -b:a 48k -application voip out/N06_algieba.ogg
 
       - name: Upload bridge narration artifact
         uses: actions/upload-artifact@v4
