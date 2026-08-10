@@ -79,11 +79,7 @@ jobs:
                   model="gemini-3.1-flash-tts-preview",
                   input=prompt,
                   response_format={"type": "audio"},
-                  generation_config={
-                      "speech_config": [
-                          {"voice": "Algieba"}
-                      ]
-                  },
+                  generation_config={"speech_config": [{"voice": "Algieba"}]},
               )
               pcm = base64.b64decode(interaction.output_audio.data)
               wav_path = out / f"{key}_algieba.wav"
@@ -123,6 +119,13 @@ jobs:
                       raise SystemExit(f"audio too short: {path}")
                   print(f"{path.name}: {duration:.3f}s")
           PY
+
+      - name: Export compact Opus copies
+        run: |
+          set -euo pipefail
+          ffmpeg -y -i out/N01_algieba.wav -c:a libopus -b:a 32k -application voip out/N01_algieba.ogg
+          ffmpeg -y -i out/N02_algieba.wav -c:a libopus -b:a 32k -application voip out/N02_algieba.ogg
+          ls -lh out/*.ogg
 
       - name: Persist generated narration
         run: |
