@@ -1,0 +1,26 @@
+{
+  "N01": {
+    "text": "僕は小さい時、絵を描くことが好きでした。",
+    "voice": "Algieba",
+    "model": "gemini-3.1-flash-tts-preview",
+    "file": "N01_algieba.wav"
+  },
+  "N02": {
+    "text": "ジムの絵具。なかでも藍と洋紅は、とても美しく見えました。",
+    "voice": "Algieba",
+    "model": "gemini-3.1-flash-tts-preview",
+    "file": "N02_algieba.wav"
+  },
+  "N03": {
+    "text": "取ったあとも、胸は少しも落ち着きませんでした。",
+    "voice": "Algieba",
+    "model": "gemini-3.1-flash-tts-preview",
+    "file": "N03_algieba.wav"
+  },
+  "N04": {
+    "text": "もう、言い逃れはできませんでした。",
+    "voice": "Algieba",
+    "model": "gemini-3.1-flash-tts-preview",
+    "file": "N04_algieba.wav"
+  }
+}
