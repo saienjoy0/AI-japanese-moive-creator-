@@ -1,0 +1,16 @@
+{
+  "N01": {
+    "text": "僕は答える代りに、本当に泣き出してしまいました。",
+    "voice": "Algieba",
+    "model": "gemini-3.1-flash-tts-preview",
+    "duration_seconds": 6.92,
+    "file": "N01_algieba.wav"
+  },
+  "N02": {
+    "text": "先生は窓辺の葡萄を一房、もぎ取りました。",
+    "voice": "Algieba",
+    "model": "gemini-3.1-flash-tts-preview",
+    "duration_seconds": 6.0,
+    "file": "N02_algieba.wav"
+  }
+}
