@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       confirm_run:
-        description: Exact confirmation phrase
+        description: Confirmation phrase
         required: true
+        default: RUN_E01_GEMINI_ALGIEBA_NARRATION_ONCE
         type: string
 
 permissions:
