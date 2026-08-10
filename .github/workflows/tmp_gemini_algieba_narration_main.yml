@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   synthesize:
-    if: ${{ github.event.issue.pull_request && github.event.comment.body == '/run-gemini-algieba-narration' && github.actor == github.repository_owner }}
+    if: ${{ github.event.issue.pull_request && github.event.issue.number == 83 && github.event.comment.body == '/run-gemini-algieba-narration' }}
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
