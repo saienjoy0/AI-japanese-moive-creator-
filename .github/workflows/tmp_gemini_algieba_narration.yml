@@ -1,0 +1,106 @@
+name: tmp-gemini-algieba-narration
+
+on:
+  push:
+    branches:
+      - tmp/gemini-algieba-narration-20260810
+    paths:
+      - .github/workflows/tmp_gemini_algieba_narration.yml
+  workflow_dispatch:
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Gemini SDK
+        run: python -m pip install --upgrade google-genai
+
+      - name: Generate Japanese narration with Algieba
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GEMINI_API_KEY"
+          mkdir -p out
+          cat > /tmp/synth.py <<'PY'
+          import os, base64, wave, json
+          from pathlib import Path
+          from google import genai
+
+          client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+          out = Path("out")
+
+          lines = {
+              "N01": "僕は小さい時、絵を描くことが好きでした。",
+              "N02": "ジムの絵具。なかでも藍と洋紅は、とても美しく見えました。",
+              "N03": "取ったあとも、胸は少しも落ち着きませんでした。",
+              "N04": "もう、言い逃れはできませんでした。",
+          }
+
+          direction = """# AUDIO PROFILE
+Japanese adult male narrator, around his late 30s to early 40s. He is the grown-up version of a sensitive, inward-looking boy remembering his childhood.
+
+# SCENE
+A quiet literary recollection of childhood in an old school in Yokohama. The memory contains beauty, temptation, shame, and a faint warmth of later forgiveness.
+
+# DIRECTOR'S NOTES
+Speak in natural native Japanese.
+Warm, smooth, intimate and restrained.
+Slightly slow pace, but never theatrical or sleepy.
+Do not sound like a newsreader, commercial, anime character, or documentary announcer.
+Do not over-act sadness. Let regret and nostalgia sit very lightly underneath the words.
+Keep sentence endings soft and human.
+Clear pronunciation of 藍（あい） and 洋紅（ようこう）.
+"""
+
+          def write_wav(path, pcm, rate=24000):
+              with wave.open(str(path), "wb") as wf:
+                  wf.setnchannels(1)
+                  wf.setsampwidth(2)
+                  wf.setframerate(rate)
+                  wf.writeframes(pcm)
+
+          manifest = {}
+          for key, text in lines.items():
+              prompt = f"{direction}\n# TRANSCRIPT\n[serious, gently reflective, slightly slow] {text}"
+              interaction = client.interactions.create(
+                  model="gemini-3.1-flash-tts-preview",
+                  input=prompt,
+                  response_format={"type": "audio"},
+                  generation_config={"speech_config": [{"voice": "Algieba"}]},
+              )
+              pcm = base64.b64decode(interaction.output_audio.data)
+              wav_path = out / f"{key}_algieba.wav"
+              write_wav(wav_path, pcm)
+              manifest[key] = {
+                  "text": text,
+                  "voice": "Algieba",
+                  "model": "gemini-3.1-flash-tts-preview",
+                  "file": wav_path.name,
+              }
+
+          (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+          python /tmp/synth.py
+
+      - name: Validate outputs
+        run: |
+          set -euo pipefail
+          for f in out/N01_algieba.wav out/N02_algieba.wav out/N03_algieba.wav out/N04_algieba.wav; do
+            test -s "$f"
+            ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$f"
+          done
+
+      - name: Upload narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e01-gemini-algieba-narration-20260810
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
