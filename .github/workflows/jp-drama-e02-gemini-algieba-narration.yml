@@ -1,18 +1,18 @@
-name: Japanese Drama E02 Gemini Algieba Narration
+name: Temporary E01 Bridge via Registered Algieba Workflow
 
 on:
   push:
-    branches: [main]
+    branches:
+      - "tmp/e01-algieba-bridge-20260810-v1"
     paths:
-      - ".tmp/triggers/e02-algieba-narration-v1.txt"
-  workflow_dispatch:
+      - ".github/workflows/jp-drama-e02-gemini-algieba-narration.yml"
 
 permissions:
   contents: write
 
 jobs:
   synthesize:
-    name: Generate E02 Algieba narration
+    name: Generate E01 Algieba bridge narration
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -52,8 +52,8 @@ jobs:
           out = Path("out")
 
           lines = {
-              "N01": "僕は答える代りに、本当に泣き出してしまいました。",
-              "N02": "先生は窓辺の葡萄を一房、もぎ取りました。",
+              "N05": "昼休み、教室に残ったのは僕だけでした。",
+              "N06": "僕は、そのまま先生の部屋へ連れて行かれました。",
           }
 
           direction = """Native Japanese adult male narrator, late 30s to early 40s.
@@ -62,7 +62,7 @@ jobs:
           Do not sound like a newsreader, commercial, anime character, or documentary announcer.
           Keep sentence endings soft. Do not over-act sadness.
           Let nostalgia, regret, and the faint warmth of later forgiveness remain subtle.
-          Pronounce 葡萄 as ぶどう and 一房 as ひとふさ clearly.
+          Read compactly enough to fit a short-film narration pause while keeping natural Japanese rhythm.
           """
 
           def write_wav(path: Path, pcm: bytes):
@@ -108,7 +108,7 @@ jobs:
           python - <<'PY'
           import wave
           from pathlib import Path
-          for path in [Path("out/N01_algieba.wav"), Path("out/N02_algieba.wav")]:
+          for path in [Path("out/N05_algieba.wav"), Path("out/N06_algieba.wav")]:
               if not path.is_file() or path.stat().st_size <= 44:
                   raise SystemExit(f"invalid output: {path}")
               with wave.open(str(path), "rb") as wf:
@@ -122,28 +122,17 @@ jobs:
 
       - name: Export compact Opus copies
         run: |
-          set -euo pipefail
-          ffmpeg -y -i out/N01_algieba.wav -c:a libopus -b:a 32k -application voip out/N01_algieba.ogg
-          ffmpeg -y -i out/N02_algieba.wav -c:a libopus -b:a 32k -application voip out/N02_algieba.ogg
-          ls -lh out/*.ogg
+          ffmpeg -y -i out/N05_algieba.wav -c:a libopus -b:a 48k -application voip out/N05_algieba.ogg
+          ffmpeg -y -i out/N06_algieba.wav -c:a libopus -b:a 48k -application voip out/N06_algieba.ogg
 
-      - name: Persist generated narration
+      - name: Persist outputs on temporary branch
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -C tmp/gemini-algieba-e02-output-20260810-v1
-          rm -rf .tmp/gemini_algieba_e02_narration
-          mkdir -p .tmp/gemini_algieba_e02_narration
-          cp out/* .tmp/gemini_algieba_e02_narration/
-          git add .tmp/gemini_algieba_e02_narration
-          git commit -m "tmp: add E02 Gemini Algieba narration outputs"
-          git push --force origin HEAD:tmp/gemini-algieba-e02-output-20260810-v1
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: e02-gemini-algieba-narration-20260810
-          path: out/
-          if-no-files-found: error
-          retention-days: 7
+          mkdir -p .tmp/e01_algieba_bridge_narration
+          cp out/* .tmp/e01_algieba_bridge_narration/
+          git add .tmp/e01_algieba_bridge_narration
+          git commit -m "tmp: add E01 Algieba bridge narration outputs"
+          git push origin HEAD:tmp/e01-algieba-bridge-20260810-v1
