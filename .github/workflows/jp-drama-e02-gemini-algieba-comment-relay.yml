@@ -50,7 +50,7 @@ jobs:
             "/repos/$GITHUB_REPOSITORY/actions/workflows/jp-drama-e02-algieba-opus-export.yml/dispatches" \
             -f ref=main
 
-  report:
+  report-narration:
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.action == 'created' &&
@@ -66,13 +66,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           RUN_JSON="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/jp-drama-e02-gemini-algieba-narration.yml/runs?event=workflow_dispatch&per_page=1" --jq '.workflow_runs[0]')"
-          test -n "$RUN_JSON"
-          test "$RUN_JSON" != "null"
           RUN_ID="$(jq -r '.id' <<<"$RUN_JSON")"
           STATUS="$(jq -r '.status' <<<"$RUN_JSON")"
           CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$RUN_JSON")"
           URL="$(jq -r '.html_url' <<<"$RUN_JSON")"
           BODY=$(printf 'E02 Algieba narration status\n\n- run_id: `%s`\n- status: `%s`\n- conclusion: `%s`\n- URL: %s' "$RUN_ID" "$STATUS" "$CONCLUSION" "$URL")
-          gh api --method POST \
-            "/repos/$GITHUB_REPOSITORY/issues/37/comments" \
-            -f "body=$BODY"
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/37/comments" -f "body=$BODY"
+
+  report-opus:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.issue.number == 37 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == 'CHECK_E02_ALGIEBA_OPUS_STATUS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report latest E02 Opus export workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_JSON="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/jp-drama-e02-algieba-opus-export.yml/runs?event=workflow_dispatch&per_page=1" --jq '.workflow_runs[0]')"
+          RUN_ID="$(jq -r '.id' <<<"$RUN_JSON")"
+          STATUS="$(jq -r '.status' <<<"$RUN_JSON")"
+          CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$RUN_JSON")"
+          URL="$(jq -r '.html_url' <<<"$RUN_JSON")"
+          BODY=$(printf 'E02 Algieba Opus export status\n\n- run_id: `%s`\n- status: `%s`\n- conclusion: `%s`\n- URL: %s' "$RUN_ID" "$STATUS" "$CONCLUSION" "$URL")
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/issues/37/comments" -f "body=$BODY"
