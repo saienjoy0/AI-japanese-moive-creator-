@@ -59,10 +59,10 @@ jobs:
           prompt = f"{direction}\nRead exactly this Japanese narration:\n{text}"
 
           interaction = None
-          for attempt in range(1, 6):
+          for attempt in range(1, 4):
               try:
                   interaction = client.interactions.create(
-                      model="gemini-3.1-flash-tts-preview",
+                      model="gemini-2.5-flash-preview-tts",
                       input=prompt,
                       response_format={"type": "audio"},
                       generation_config={"speech_config": [{"voice": "Algieba"}]},
@@ -72,7 +72,7 @@ jobs:
                   message = str(exc)
                   if "429" not in message and "quota" not in message.lower():
                       raise
-                  if attempt == 5:
+                  if attempt == 3:
                       raise
                   match = re.search(r"retry in ([0-9.]+)s", message, re.I)
                   delay = float(match.group(1)) + 2.0 if match else 65.0
@@ -91,7 +91,7 @@ jobs:
           manifest = {
               "text": text,
               "voice": "Algieba",
-              "model": "gemini-3.1-flash-tts-preview",
+              "model": "gemini-2.5-flash-preview-tts",
               "duration_seconds": duration,
               "intended_pause_seconds": 1.2,
               "file": wav_path.name,
