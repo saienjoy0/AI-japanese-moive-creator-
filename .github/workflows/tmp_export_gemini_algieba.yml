@@ -1,0 +1,52 @@
+name: tmp export Gemini Algieba narration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/tmp_export_gemini_algieba.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout generated narration branch
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/gemini-algieba-output-20260810-v1
+          fetch-depth: 0
+
+      - name: Verify generated narration
+        run: |
+          set -euo pipefail
+          test -s .tmp/gemini_algieba_narration/N01_algieba.wav
+          test -s .tmp/gemini_algieba_narration/N02_algieba.wav
+          test -s .tmp/gemini_algieba_narration/N03_algieba.wav
+          test -s .tmp/gemini_algieba_narration/N04_algieba.wav
+          test -s .tmp/gemini_algieba_narration/manifest.json
+
+      - name: Upload narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e01-gemini-algieba-narration-export-20260810
+          path: .tmp/gemini_algieba_narration/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Persist export run id
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git switch -C tmp/gemini-algieba-export-info-20260810 origin/main
+          mkdir -p .tmp
+          printf '%s\n' "$GITHUB_RUN_ID" > .tmp/gemini_algieba_export_run_id.txt
+          git add .tmp/gemini_algieba_export_run_id.txt
+          git commit -m "tmp: persist Gemini Algieba export run id"
+          git push --force origin HEAD:tmp/gemini-algieba-export-info-20260810
