@@ -1,0 +1,40 @@
+name: Japanese Drama E02 Algieba Opus Export
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout generated narration branch
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/gemini-algieba-e02-output-20260810-v1
+          fetch-depth: 0
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+
+      - name: Convert WAV to compact Opus
+        run: |
+          set -euo pipefail
+          cd .tmp/gemini_algieba_e02_narration
+          ffmpeg -y -i N01_algieba.wav -c:a libopus -b:a 32k -application voip N01_algieba.ogg
+          ffmpeg -y -i N02_algieba.wav -c:a libopus -b:a 32k -application voip N02_algieba.ogg
+          ls -lh N01_algieba.ogg N02_algieba.ogg
+
+      - name: Commit compact audio files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .tmp/gemini_algieba_e02_narration/*.ogg
+          git commit -m "tmp: add compact E02 Algieba narration" || true
+          git push origin HEAD:tmp/gemini-algieba-e02-output-20260810-v1
