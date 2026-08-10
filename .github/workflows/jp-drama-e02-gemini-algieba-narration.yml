@@ -27,7 +27,7 @@ jobs:
       - name: Install Gemini SDK
         run: python -m pip install --quiet --upgrade google-genai
 
-      - name: Generate narration
+      - name: Generate one quota-safe bridge take
         shell: bash
         run: |
           set -euo pipefail
@@ -37,6 +37,8 @@ jobs:
 
           cat > /tmp/synth.py <<'PY'
           import os
+          import re
+          import time
           import base64
           import json
           import wave
@@ -45,72 +47,78 @@ jobs:
 
           client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
           out = Path("out")
-          lines = {
-              "N05": "昼休み、教室に残ったのは僕だけでした。",
-              "N06": "僕は、そのまま先生の部屋へ連れて行かれました。",
-          }
+          text = "昼休み、教室に残ったのは僕だけでした。僕は、そのまま先生の部屋へ連れて行かれました。"
           direction = """Native Japanese adult male narrator, late 30s to early 40s.
           He is the grown-up version of a sensitive, inward-looking boy remembering childhood.
           Warm, smooth, intimate and restrained. Slightly slow, but natural.
           Do not sound like a newsreader, commercial, anime character, or documentary announcer.
           Keep sentence endings soft. Do not over-act sadness.
           Let nostalgia, regret, and the faint warmth of later forgiveness remain subtle.
-          Read compactly enough to fit a short-film narration pause while keeping natural Japanese rhythm.
+          Read the two Japanese sentences exactly as written. Insert about 1.2 seconds of complete silence between the two sentences. Do not add any spoken words.
           """
+          prompt = f"{direction}\nRead exactly this Japanese narration:\n{text}"
 
-          def write_wav(path: Path, pcm: bytes):
-              with wave.open(str(path), "wb") as wf:
-                  wf.setnchannels(1)
-                  wf.setsampwidth(2)
-                  wf.setframerate(24000)
-                  wf.writeframes(pcm)
+          interaction = None
+          for attempt in range(1, 6):
+              try:
+                  interaction = client.interactions.create(
+                      model="gemini-3.1-flash-tts-preview",
+                      input=prompt,
+                      response_format={"type": "audio"},
+                      generation_config={"speech_config": [{"voice": "Algieba"}]},
+                  )
+                  break
+              except Exception as exc:
+                  message = str(exc)
+                  if "429" not in message and "quota" not in message.lower():
+                      raise
+                  if attempt == 5:
+                      raise
+                  match = re.search(r"retry in ([0-9.]+)s", message, re.I)
+                  delay = float(match.group(1)) + 2.0 if match else 65.0
+                  print(f"rate limited; sleeping {delay:.1f}s before retry {attempt + 1}", flush=True)
+                  time.sleep(delay)
 
-          manifest = {}
-          for key, text in lines.items():
-              prompt = f"{direction}\nRead exactly this Japanese narration, without adding words:\n{text}"
-              interaction = client.interactions.create(
-                  model="gemini-3.1-flash-tts-preview",
-                  input=prompt,
-                  response_format={"type": "audio"},
-                  generation_config={"speech_config": [{"voice": "Algieba"}]},
-              )
-              pcm = base64.b64decode(interaction.output_audio.data)
-              wav_path = out / f"{key}_algieba.wav"
-              write_wav(wav_path, pcm)
-              with wave.open(str(wav_path), "rb") as wf:
-                  duration = wf.getnframes() / wf.getframerate()
-              manifest[key] = {
-                  "text": text,
-                  "voice": "Algieba",
-                  "model": "gemini-3.1-flash-tts-preview",
-                  "duration_seconds": duration,
-                  "file": wav_path.name,
-              }
-          (out / "manifest.json").write_text(
-              json.dumps(manifest, ensure_ascii=False, indent=2),
-              encoding="utf-8",
-          )
+          pcm = base64.b64decode(interaction.output_audio.data)
+          wav_path = out / "E01_bridge_algieba.wav"
+          with wave.open(str(wav_path), "wb") as wf:
+              wf.setnchannels(1)
+              wf.setsampwidth(2)
+              wf.setframerate(24000)
+              wf.writeframes(pcm)
+          with wave.open(str(wav_path), "rb") as wf:
+              duration = wf.getnframes() / wf.getframerate()
+          manifest = {
+              "text": text,
+              "voice": "Algieba",
+              "model": "gemini-3.1-flash-tts-preview",
+              "duration_seconds": duration,
+              "intended_pause_seconds": 1.2,
+              "file": wav_path.name,
+          }
+          (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+          print(f"generated {wav_path.name}: {duration:.3f}s")
           PY
 
           python /tmp/synth.py
 
-      - name: Validate WAV outputs
+      - name: Validate WAV output
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import wave
           from pathlib import Path
-          for path in [Path("out/N05_algieba.wav"), Path("out/N06_algieba.wav")]:
-              if not path.is_file() or path.stat().st_size <= 44:
-                  raise SystemExit(f"invalid output: {path}")
-              with wave.open(str(path), "rb") as wf:
-                  if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 24000:
-                      raise SystemExit(f"unexpected WAV format: {path}")
-                  duration = wf.getnframes() / wf.getframerate()
-                  if duration <= 0.2:
-                      raise SystemExit(f"audio too short: {path}")
-                  print(f"{path.name}: {duration:.3f}s")
+          path = Path("out/E01_bridge_algieba.wav")
+          if not path.is_file() or path.stat().st_size <= 44:
+              raise SystemExit(f"invalid output: {path}")
+          with wave.open(str(path), "rb") as wf:
+              if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 24000:
+                  raise SystemExit(f"unexpected WAV format: {path}")
+              duration = wf.getnframes() / wf.getframerate()
+              if duration <= 1.0:
+                  raise SystemExit(f"audio too short: {path}")
+              print(f"{path.name}: {duration:.3f}s")
           PY
 
       - name: Upload bridge narration artifact
