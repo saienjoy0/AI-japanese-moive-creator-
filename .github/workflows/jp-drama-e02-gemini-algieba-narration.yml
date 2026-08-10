@@ -1,17 +1,18 @@
 name: Temporary E01 Bridge via Registered Algieba Workflow
 
 on:
-  push:
-    branches:
-      - "tmp/e01-algieba-bridge-20260810-v1"
+  pull_request:
+    branches: [main]
+    types: [synchronize]
     paths:
       - ".github/workflows/jp-drama-e02-gemini-algieba-narration.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   synthesize:
+    if: github.head_ref == 'tmp/e01-algieba-bridge-20260810-v1'
     name: Generate E01 Algieba bridge narration
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -19,13 +20,7 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -50,12 +45,10 @@ jobs:
 
           client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
           out = Path("out")
-
           lines = {
               "N05": "昼休み、教室に残ったのは僕だけでした。",
               "N06": "僕は、そのまま先生の部屋へ連れて行かれました。",
           }
-
           direction = """Native Japanese adult male narrator, late 30s to early 40s.
           He is the grown-up version of a sensitive, inward-looking boy remembering childhood.
           Warm, smooth, intimate and restrained. Slightly slow, but natural.
@@ -93,7 +86,6 @@ jobs:
                   "duration_seconds": duration,
                   "file": wav_path.name,
               }
-
           (out / "manifest.json").write_text(
               json.dumps(manifest, ensure_ascii=False, indent=2),
               encoding="utf-8",
@@ -102,7 +94,8 @@ jobs:
 
           python /tmp/synth.py
 
-      - name: Validate outputs
+      - name: Validate and export compact copies
+        shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -119,20 +112,13 @@ jobs:
                       raise SystemExit(f"audio too short: {path}")
                   print(f"{path.name}: {duration:.3f}s")
           PY
-
-      - name: Export compact Opus copies
-        run: |
           ffmpeg -y -i out/N05_algieba.wav -c:a libopus -b:a 48k -application voip out/N05_algieba.ogg
           ffmpeg -y -i out/N06_algieba.wav -c:a libopus -b:a 48k -application voip out/N06_algieba.ogg
 
-      - name: Persist outputs on temporary branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p .tmp/e01_algieba_bridge_narration
-          cp out/* .tmp/e01_algieba_bridge_narration/
-          git add .tmp/e01_algieba_bridge_narration
-          git commit -m "tmp: add E01 Algieba bridge narration outputs"
-          git push origin HEAD:tmp/e01-algieba-bridge-20260810-v1
+      - name: Upload bridge narration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e01-algieba-bridge-20260810
+          path: out/
+          if-no-files-found: error
+          retention-days: 1
