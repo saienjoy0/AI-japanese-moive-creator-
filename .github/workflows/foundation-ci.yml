@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: foundation-ci-${{ github.workflow }}-${{ github.ref }}
@@ -132,38 +132,43 @@ jobs:
 
   gemini-algieba-narration:
     name: Gemini Algieba E01 narration
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'tmp/gemini-algieba-narration-20260810' }}
+    if: ${{ github.event_name == 'push' && github.event.head_commit.message == 'tmp: trigger Gemini Algieba narration generation' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Preflight
-        run: |
-          set -euo pipefail
-          test -n "$GEMINI_API_KEY"
-          python -m pip install --quiet --upgrade google-genai
+
+      - name: Install Gemini SDK
+        run: python -m pip install --quiet --upgrade google-genai
+
       - name: Generate Algieba narration
         run: |
           set -euo pipefail
+          rm -rf out
           mkdir -p out
           cat > /tmp/synth.py <<'PY'
-          import os, base64, wave, json
+          import os, base64, wave, json, traceback
           from pathlib import Path
           from google import genai
 
-          client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-          out = Path("out")
+          out = Path('out')
           lines = {
-              "N01": "僕は小さい時、絵を描くことが好きでした。",
-              "N02": "ジムの絵具。なかでも藍と洋紅は、とても美しく見えました。",
-              "N03": "取ったあとも、胸は少しも落ち着きませんでした。",
-              "N04": "もう、言い逃れはできませんでした。",
+              'N01': '僕は小さい時、絵を描くことが好きでした。',
+              'N02': 'ジムの絵具。なかでも藍と洋紅は、とても美しく見えました。',
+              'N03': '取ったあとも、胸は少しも落ち着きませんでした。',
+              'N04': 'もう、言い逃れはできませんでした。',
           }
-          direction = """# AUDIO PROFILE
+          direction = '''# AUDIO PROFILE
 A native Japanese adult male narrator in his late 30s to early 40s. He is the grown-up version of a sensitive, inward-looking boy remembering his childhood.
 
 # SCENE
@@ -176,36 +181,48 @@ Not a newsreader, commercial, anime character, or documentary announcer.
 Keep sentence endings soft and human.
 Do not over-act sadness; let nostalgia and regret stay very light.
 Pronounce 藍 as あい and 洋紅 as ようこう clearly.
-"""
+'''
 
           def write_wav(path, pcm):
-              with wave.open(str(path), "wb") as wf:
+              with wave.open(str(path), 'wb') as wf:
                   wf.setnchannels(1)
                   wf.setsampwidth(2)
                   wf.setframerate(24000)
                   wf.writeframes(pcm)
 
-          manifest = {}
-          for key, text in lines.items():
-              prompt = f"{direction}\n# TRANSCRIPT\n[serious, gently reflective, slightly slow] {text}"
-              interaction = client.interactions.create(
-                  model="gemini-3.1-flash-tts-preview",
-                  input=prompt,
-                  response_format={"type": "audio"},
-                  generation_config={"speech_config": [{"voice": "Algieba"}]},
+          try:
+              key = os.environ['GEMINI_API_KEY']
+              if not key:
+                  raise RuntimeError('GEMINI_API_KEY is empty')
+              client = genai.Client(api_key=key)
+              manifest = {}
+              for name, text in lines.items():
+                  prompt = f'{direction}\n# TRANSCRIPT\n[serious, gently reflective, slightly slow] {text}'
+                  interaction = client.interactions.create(
+                      model='gemini-3.1-flash-tts-preview',
+                      input=prompt,
+                      response_format={'type': 'audio'},
+                      generation_config={'speech_config': [{'voice': 'Algieba'}]},
+                  )
+                  data = interaction.output_audio.data
+                  pcm = base64.b64decode(data) if isinstance(data, str) else data
+                  wav_path = out / f'{name}_algieba.wav'
+                  write_wav(wav_path, pcm)
+                  manifest[name] = {
+                      'text': text,
+                      'voice': 'Algieba',
+                      'model': 'gemini-3.1-flash-tts-preview',
+                      'file': wav_path.name,
+                  }
+              (out / 'manifest.json').write_text(
+                  json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8'
               )
-              pcm = base64.b64decode(interaction.output_audio.data)
-              wav_path = out / f"{key}_algieba.wav"
-              write_wav(wav_path, pcm)
-              manifest[key] = {
-                  "text": text,
-                  "voice": "Algieba",
-                  "model": "gemini-3.1-flash-tts-preview",
-                  "file": wav_path.name,
-              }
-          (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+          except Exception:
+              (out / 'error.txt').write_text(traceback.format_exc(), encoding='utf-8')
+              raise
           PY
           python /tmp/synth.py
+
       - name: Validate outputs
         run: |
           set -euo pipefail
@@ -213,7 +230,25 @@ Pronounce 藍 as あい and 洋紅 as ようこう clearly.
             test -s "$f"
             ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$f"
           done
+
+      - name: Persist narration or diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          printf 'source_sha=%s\n' "$GITHUB_SHA" > out/run_info.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C tmp/gemini-algieba-output-20260810-v1
+          rm -rf .tmp/gemini_algieba_narration
+          mkdir -p .tmp/gemini_algieba_narration
+          cp -a out/. .tmp/gemini_algieba_narration/
+          git add .tmp/gemini_algieba_narration
+          git commit -m 'tmp: persist Gemini Algieba narration result'
+          git push --force origin HEAD:tmp/gemini-algieba-output-20260810-v1
+
       - name: Upload narration artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e01-gemini-algieba-narration-20260810
