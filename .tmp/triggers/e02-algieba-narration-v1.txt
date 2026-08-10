@@ -1,0 +1,2 @@
+triggered_at=2026-08-10T17:36:00+09:00
+purpose=E02 intertitle narration with Gemini Algieba
