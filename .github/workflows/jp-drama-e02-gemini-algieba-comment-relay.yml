@@ -30,6 +30,26 @@ jobs:
             "/repos/$GITHUB_REPOSITORY/actions/workflows/jp-drama-e02-gemini-algieba-narration.yml/dispatches" \
             -f ref=main
 
+  export-opus:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.issue.number == 37 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == 'RUN_E02_ALGIEBA_OPUS_EXPORT'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch E02 compact audio export
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/jp-drama-e02-algieba-opus-export.yml/dispatches" \
+            -f ref=main
+
   report:
     if: >-
       github.event_name == 'issue_comment' &&
