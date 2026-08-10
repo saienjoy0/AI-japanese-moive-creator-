@@ -2,6 +2,10 @@ name: Japanese Drama E01 Gemini Algieba Narration
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/jp-drama-e01-gemini-algieba-narration.yml"
 
 permissions:
   contents: write
@@ -83,8 +87,7 @@ jobs:
                       ]
                   },
               )
-              data = interaction.output_audio.data
-              pcm = base64.b64decode(data) if isinstance(data, str) else data
+              pcm = base64.b64decode(interaction.output_audio.data)
               wav_path = out / f"{key}_algieba.wav"
               write_wav(wav_path, pcm)
               manifest[key] = {
@@ -105,10 +108,27 @@ jobs:
       - name: Validate outputs
         run: |
           set -euo pipefail
-          for f in out/N01_algieba.wav out/N02_algieba.wav out/N03_algieba.wav out/N04_algieba.wav; do
-            test -s "$f"
-            ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$f"
-          done
+          python - <<'PY'
+          import wave
+          from pathlib import Path
+
+          expected = [
+              Path("out/N01_algieba.wav"),
+              Path("out/N02_algieba.wav"),
+              Path("out/N03_algieba.wav"),
+              Path("out/N04_algieba.wav"),
+          ]
+          for path in expected:
+              if not path.is_file() or path.stat().st_size <= 44:
+                  raise SystemExit(f"invalid output: {path}")
+              with wave.open(str(path), "rb") as wf:
+                  if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 24000:
+                      raise SystemExit(f"unexpected WAV format: {path}")
+                  duration = wf.getnframes() / wf.getframerate()
+                  if duration <= 0.2:
+                      raise SystemExit(f"audio too short: {path}")
+                  print(f"{path.name}: {duration:.3f}s")
+          PY
 
       - name: Persist generated narration
         run: |
