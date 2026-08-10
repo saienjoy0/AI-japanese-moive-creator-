@@ -6,12 +6,10 @@ on:
       - tmp/gemini-algieba-narration-20260810
     paths:
       - .github/workflows/tmp_gemini_algieba_narration.yml
-  pull_request:
-    branches:
-      - main
-    paths:
-      - .github/workflows/tmp_gemini_algieba_narration.yml
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   synthesize:
@@ -102,6 +100,11 @@ Clear pronunciation of 藍（あい） and 洋紅（ようこう）.
             ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$f"
           done
 
+      - name: Package narration
+        run: |
+          cd out
+          zip -9 ../e01-gemini-algieba-narration-20260810.zip ./*
+
       - name: Upload narration artifact
         uses: actions/upload-artifact@v4
         with:
@@ -109,3 +112,16 @@ Clear pronunciation of 藍（あい） and 洋紅（ようこう）.
           path: out/
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish temporary release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="tmp-gemini-algieba-20260810-v1"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" e01-gemini-algieba-narration-20260810.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Temporary Gemini Algieba narration" \
+            --notes "Temporary E01 narration audio generated with Gemini 3.1 Flash TTS Preview / Algieba."
