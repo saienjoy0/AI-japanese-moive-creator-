@@ -17,6 +17,11 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/gemini-algieba-narration-20260810
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,6 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$GEMINI_API_KEY"
+          rm -rf out
           mkdir -p out
           cat > /tmp/synth.py <<'PY'
           import os, base64, wave, json
@@ -100,10 +106,17 @@ Clear pronunciation of 藍（あい） and 洋紅（ようこう）.
             ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$f"
           done
 
-      - name: Package narration
+      - name: Persist generated narration to temporary branch
         run: |
-          cd out
-          zip -9 ../e01-gemini-algieba-narration-20260810.zip ./*
+          set -euo pipefail
+          rm -rf .tmp/gemini_algieba_narration
+          mkdir -p .tmp/gemini_algieba_narration
+          cp out/* .tmp/gemini_algieba_narration/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .tmp/gemini_algieba_narration
+          git commit -m "tmp: add Gemini Algieba narration outputs"
+          git push origin HEAD:tmp/gemini-algieba-narration-20260810
 
       - name: Upload narration artifact
         uses: actions/upload-artifact@v4
@@ -112,16 +125,3 @@ Clear pronunciation of 藍（あい） and 洋紅（ようこう）.
           path: out/
           if-no-files-found: error
           retention-days: 7
-
-      - name: Publish temporary release asset
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="tmp-gemini-algieba-20260810-v1"
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" e01-gemini-algieba-narration-20260810.zip \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Temporary Gemini Algieba narration" \
-            --notes "Temporary E01 narration audio generated with Gemini 3.1 Flash TTS Preview / Algieba."
