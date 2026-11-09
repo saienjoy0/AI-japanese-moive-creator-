@@ -1,0 +1,85 @@
+name: TIC Oil Dumplings Gemini TTS Recovery 20261109
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tic-oil-dumplings-gemini-20261109.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -q --upgrade google-genai
+      - name: Generate 5 approved sentences
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import os,base64,json,wave
+          from pathlib import Path
+          from google import genai
+          text=[
+           "この餃子、タレにつけないって知ってた？",
+           "茹でた餃子に唐辛子をたっぷり！刻んだ薬味も加える。",
+           "そこへ熱い油をジュワッ！餃子の上で直接タレを作る。",
+           "白ごまを加え、全体を混ぜれば味がしっかり絡む！",
+           "しかも冷凍餃子でも、茹でて味付けすれば再現できる！",
+          ]
+          style="明るい20〜30代の成人男性。中音からやや高め、熱血で元気、聞き取りやすく、テンション8/10。短い料理Shorts。絶叫なし。文字の追加省略なし。"
+          print("KEY_CONFIGURED:",bool(os.environ.get("GEMINI_API_KEY")),flush=True)
+          client=genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+          errors={}
+          for model in ["gemini-3.8-flash-tts","gemini-3.1-flash-tts-preview"]:
+             try:
+                for i,line in enumerate(text,1):
+                   if model=="gemini-3.8-flash-tts":
+                      inp=[{"type":"user_input","content":[{"type":"text","text":line,"annotations":[{"type":"speech_metadata","style":style}]}]}]
+                   else:
+                      inp=style+"\\nRead exactly this Japanese narration only:\\n"+line
+                   res=client.interactions.create(model=model,input=inp,response_format={"type":"audio"},generation_config={"speech_config":[{"voice":"Puck"}]})
+                   raw=res.output_audio.data
+                   audio=base64.b64decode(raw) if isinstance(raw,str) else bytes(raw)
+                   p=Path("out")/f"voice_{i:02d}.wav"
+                   if audio.startswith(b"RIFF") and audio[8:12]==b"WAVE":p.write_bytes(audio)
+                   else:
+                      with wave.open(str(p),"wb") as f:
+                         f.setnchannels(1);f.setsampwidth(2);f.setframerate(24000);f.writeframes(audio)
+                   print(model,str(p),len(audio),flush=True)
+                (Path("out")/"model.json").write_text(json.dumps({"model":model,"voice":"Puck","texts":text},ensure_ascii=False))
+                break
+             except Exception as e:
+                errors[model]=repr(e)[:1000]
+                print("FAILED",model,repr(e)[:600],flush=True)
+                for p in Path("out").glob("voice_*.wav"):p.unlink()
+          (Path("out")/"diagnostics.json").write_text(json.dumps(errors,ensure_ascii=False,indent=2))
+          if not list(Path("out").glob("voice_*.wav")):raise SystemExit("NO_TTS_AUDIO")
+          PY
+      - name: Upload audio results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tic-oil-dumplings-gemini-20261109
+          path: out/
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Publish audio to branch if successful
+        if: success()
+        run: |
+          git switch -C tmp/tic-oil-dumplings-20261109-gemini
+          mkdir -p tic_oil_dumplings_20261109
+          cp out/* tic_oil_dumplings_20261109/
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tic_oil_dumplings_20261109
+          git commit -m "TIC 08G Gemini audio outputs [skip ci]"
+          git push -f origin HEAD:tmp/tic-oil-dumplings-20261109-gemini
